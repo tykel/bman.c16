@@ -14,11 +14,19 @@ game_loop:          call handle_pad
                     call drw_plyrs
                     call drw_objs
                     vblnk
+                    ldm r0, data.anikey
+                    subi r0, 1
+                    jnn .game_loopSAK
+                    ldi r0, 20
+.game_loopSAK:      stm r0, data.anikey
                     jmp game_loop
 
 handle_pad:         ldm r0, 0xfff0
                     ldi r1, data.vec_plyrs
-                    ldi r4, data.spr_plyr
+                    ldm r4, data.anikey
+                    divi r4, 5
+                    muli r4, 512
+                    addi r4, data.spr_plyr
                     ldi rf, 0
                     stm rf, r1
                     addi r1, 2
@@ -173,6 +181,7 @@ debug.x1:   dw 0
 debug.y1:   dw 0
 debug.spr:  dw 0xffff
 
+data.anikey:        dw 0
 data.sp:            dw 0
 
 data.ptr_spr_plyr:  dw data.spr_plyr
@@ -184,10 +193,10 @@ data.vec_plyrs:     dw 0, 0
 ; Use Up=0, Down=1, Left=2, Right=3. 
 data.dir_plyrs:     dw 1
 
-data.move_lut:      dw 2,0,  13,0,
-                    dw 2,13, 13,13,
-                    dw 0,0,  0, 13,
-                    dw 13,0, 13,13,
+data.move_lut:      dw 4,4,  11,4,
+                    dw 4,12, 11,12,
+                    dw 4,4,  4, 12,
+                    dw 11,4, 11,12,
 
 data.spr_blck:      db 0x02, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x20
                     db 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22
