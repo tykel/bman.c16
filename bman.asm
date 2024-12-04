@@ -14,11 +14,6 @@ game_loop:          call handle_pad
                     call drw_plyrs
                     call drw_objs
                     vblnk
-                    ldm r0, data.anikey
-                    subi r0, 1
-                    jnn .game_loopSAK
-                    ldi r0, 20
-.game_loopSAK:      stm r0, data.anikey
                     jmp game_loop
 
 handle_pad:         ldm r0, 0xfff0
@@ -33,8 +28,16 @@ handle_pad:         ldm r0, 0xfff0
                     stm rf, r1
                     ldi r1, data.vec_plyrs
                     cmpi r0, 0
-                    jz .handle_padZ
-.handle_pad0:       ldm r2, data.speed_plyrs
+                    jnz .handle_pad0
+                    ldi r0, 0
+                    stm r0, data.anikey
+                    jmp .handle_padZ
+.handle_pad0:       ldm r9, data.anikey
+                    subi r9, 1
+                    jnn .handle_pad1
+                    ldi r9, 19
+.handle_pad1:       stm r9, data.anikey
+                    ldm r2, data.speed_plyrs
 .handle_padUp:      tsti r0, 1
                     jz .handle_padDn
                     addi r4, 128
@@ -146,15 +149,25 @@ drw_grid:           spr 0x1008
                     subi r2, 16
                     jnn .drw_gridL
                     ldi r2, 304
-                    subi r3, 16
+.drw_gridL2:        subi r3, 16
                     jnn .drw_gridL
 .drw_gridZ:         ret
 
-drw_plyrs:          ldi r0, 0
+drw_plyrs:          ;push r0
+                    ;push r1
+                    ;push r2
+                    ;push r3
+                    ldi r0, 0
                     call drw_plyr
+                    ;pop r3
+                    ;pop r2
+                    ;pop r1
+                    ;pop r0
                     ret
 
-drw_objs:           spr 0x0201
+drw_objs:           
+                    ret
+                    spr 0x0201              ; debug markers for collision detection
                     ldm r0, debug.x0
                     ldm r1, debug.y0
                     drw r0, r1, debug.spr
@@ -173,7 +186,31 @@ drw_plyr:           shl r0, 2   ; player index to offset in pos_plyrs
                     spr 0x1008
                     ldm r3, data.ptr_spr_plyr
                     drw r1, r2, r3
-                    ret
+                    tsti r2, 8  ; Only redraw tiles if player in top half of cell
+                    jnz .drw_plyrZ
+                    addi r1, 3  ; Use collision offsets for this
+                    andi r1, 0xfff0
+                    push r1
+                    addi r2, 16
+                    andi r2, 0xfff0
+                    push r2
+                    mov r0, r1
+                    mov r1, r2
+                    call map_contents_at    ; If there is a block here, redraw
+                    pop r3
+                    pop r2
+                    cmpi r0, 0
+                    jz .drw_plyrT0
+                    drw r2, r3, data.spr_blck
+.drw_plyrT0:        addi r2, 16             ; Now check to the right
+                    andi r2, 0xfff0
+                    mov r0, r2
+                    mov r1, r3
+                    call map_contents_at    ; If there is a block here, redraw
+                    cmpi r0, 0
+                    jz .drw_plyrZ
+                    drw r2, r3, data.spr_blck
+.drw_plyrZ:         ret
 
 debug.x0:   dw 0
 debug.y0:   dw 0
@@ -193,10 +230,10 @@ data.vec_plyrs:     dw 0, 0
 ; Use Up=0, Down=1, Left=2, Right=3. 
 data.dir_plyrs:     dw 1
 
-data.move_lut:      dw 4,4,  11,4,
-                    dw 4,12, 11,12,
-                    dw 4,4,  4, 12,
-                    dw 11,4, 11,12,
+data.move_lut:      dw 4,5,  11,5,
+                    dw 4,10, 11,10,
+                    dw 4,5,  4, 10,
+                    dw 11,5, 11,10,
 
 data.spr_blck:      db 0x02, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x20
                     db 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22
