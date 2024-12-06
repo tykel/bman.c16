@@ -11,8 +11,8 @@ game_loop:          call handle_pad
                     cls
                     bgc 0xb
                     call drw_grid
-                    call drw_plyrs
                     call drw_objs
+                    call drw_plyrs
                     vblnk
                     jmp game_loop
 
@@ -73,7 +73,33 @@ handle_pad:         ldm r0, 0xfff0
                     ldi r2, 3
                     stm r2, data.dir_plyrs
                     jmp .handle_padZ
-.handle_padZ:       ret
+.handle_padZ:       tsti r0, 64 ; A
+                    jz .handle_padZZ
+.handle_padAb:      ldi r1, 1
+                    stm r1, data.num_bombs
+                    ldi r1, data.pos_plyrs
+                    ldi r2, data.bombs
+                    ldm r3, r1
+                    andi r3, 0xfff0
+                    addi r3, 8
+                    mov r4, r3
+                    shr r4, 4
+                    stm r3, r2
+                    addi r1, 2
+                    addi r2, 2
+                    ldm r3, r1
+                    andi r3, 0xfff0
+                    addi r3, 8
+                    stm r3, r2
+                    shr r3, 4
+                    muli r3, 20
+                    add r3, r4
+                    addi r3, data.level
+                    ldm r2, r3
+                    andi r2, 0xff00
+                    ori r2, 1
+                    stm r2, r3
+.handle_padZZ:      ret
 
 move_plyrs:         ldi r2, data.pos_plyrs
                     ldm r0, r2  ; pos.x
@@ -143,6 +169,8 @@ drw_grid:           spr 0x1008
                     ldm r4, r4
                     andi r4, 0xff
                     jz .drw_gridL1
+                    cmpi r4, 128
+                    jl .drw_gridL1
                     drw r2, r3, data.spr_blck
 .drw_gridL1:        subi r1, 1
                     jn .drw_gridZ
@@ -165,8 +193,20 @@ drw_plyrs:          ;push r0
                     ;pop r0
                     ret
 
-drw_objs:           
-                    ret
+drw_objs:           ldm r0, data.num_bombs
+.drw_objsBbL:       subi r0, 1
+                    jn .drw_objsA
+.drw_objsBbs:       mov r1, r0
+                    shl r1, 2
+                    addi r1, data.bombs
+                    ldm r2, r1
+                    addi r1, 2
+                    ldm r1, r1
+                    subi r2, 8
+                    subi r1, 8
+                    drw r2, r1, data.spr_bomb
+                    jmp .drw_objsBbL
+.drw_objsA:         ret
                     spr 0x0201              ; debug markers for collision detection
                     ldm r0, debug.x0
                     ldm r1, debug.y0
@@ -185,6 +225,8 @@ drw_plyr:           shl r0, 2   ; player index to offset in pos_plyrs
                     ldm r2, r0  ; r2 <= player y
                     spr 0x1008
                     ldm r3, data.ptr_spr_plyr
+                    subi r1, 8
+                    subi r2, 8
                     drw r1, r2, r3
                     tsti r2, 8  ; Only redraw tiles if player in top half of cell
                     jnz .drw_plyrZ
@@ -223,17 +265,21 @@ data.sp:            dw 0
 
 data.ptr_spr_plyr:  dw data.spr_plyr
 
-data.pos_plyrs:     dw 16, 16
+data.pos_plyrs:     dw 24, 24
 
 data.speed_plyrs:   dw 1
 data.vec_plyrs:     dw 0, 0
 ; Use Up=0, Down=1, Left=2, Right=3. 
 data.dir_plyrs:     dw 1
 
-data.move_lut:      dw 4,5,  11,5,
-                    dw 4,10, 11,10,
-                    dw 4,5,  4, 10,
-                    dw 11,5, 11,10,
+data.move_lut:      dw -4,-3,  3,-3,
+                    dw -4, 2,  3, 2,
+                    dw -4,-3, -4, 2,
+                    dw  3,-3,  3, 2,
+
+data.num_bombs:     dw 0
+data.bombs:         dw 0,0, 0,0, 0,0, 0,0
+                    dw 0,0, 0,0, 0,0, 0,0
 
 data.level:         db 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff
                     db 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff
