@@ -84,10 +84,9 @@ map_put_flame:      shr r1, 4
                     addi r0, data.level
                     ldm r1, r0
                     mov r2, r1
-                    andi r2, 0xff               ; empty : skip 
-                    jz .map_put_flameZ
+                    andi r2, 0xff
                     cmpi r2, 0x80               ; 128 == v: solid tile
-                    jle .map_put_flameZ         ; 128 < v < 255 : destr. tile
+                    jz .map_put_flameZ         ; 128 < v < 255 : destr. tile
                     andi r1, 0xff00
                     addi r1, 40                 ; add a 40-frame flame
                     stm r1, r0
@@ -252,16 +251,16 @@ drw_grid:           spr 0x1008
                     ldi r6, data.spr_blck
                     andi r5, 0xff
                     jz .drw_gridL1
-                    mov r7, r5
+                    mov r7, r5              ; tile addr = (i - 128) * 128 + spr.blck
                     subi r7, 128
                     muli r7, 128
-                    add r6, r7
+                    add r6, r7              ; r6 <= block tile sprite
                     cmpi r5, 128
                     jge .drw_gridL0
                     subi r5, 1
                     add r5, r8
                     stm r5, r4
-                    ldi r6, data.spr_expl
+                    ldi r6, data.spr_expl   ; r6 <= expl. flame sprite
 .drw_gridL0:        drw r2, r3, r6
 .drw_gridL1:        subi r1, 1
                     jn .drw_gridZ
