@@ -4,11 +4,21 @@
 ; Copyright 2024 Tim Kelsall.
 ;------------------------------------------------------------------------------
 
-init:               nop
+init:               ldi r0, 0
+                    stm r0, data.ko_plyrs
+                    ldi r0, 24
+                    ldi r1, data.pos_plyrs
+                    stm r0, r1
+                    addi r1, 2
+                    stm r0, r1
 
-game_loop:          call handle_pad
+game_loop:          ldm r0, data.ko_plyrs
+                    cmpi r0, 0
+                    jnz .game_loopKO
+                    call handle_pad
                     call move_plyrs
                     call handle_bombs
+                    call handle_flames
                     cls
                     bgc 0xb
                     call drw_grid
@@ -16,6 +26,43 @@ game_loop:          call handle_pad
                     call drw_plyrs
                     vblnk
                     jmp game_loop
+.game_loopKO:       bgc 3
+                    vblnk
+                    vblnk
+                    vblnk
+                    vblnk
+                    vblnk
+                    vblnk
+                    vblnk
+                    vblnk
+                    vblnk
+                    vblnk
+                    bgc 8
+                    vblnk
+                    vblnk
+                    vblnk
+                    vblnk
+                    vblnk
+                    vblnk
+                    vblnk
+                    vblnk
+                    vblnk
+                    vblnk
+                    jmp init
+                    jmp .game_loopKO
+
+handle_flames:      ldi r2, data.pos_plyrs
+                    ldm r0, r2
+                    addi r2, 2
+                    ldm r1, r2
+                    call map_contents_at
+                    cmpi r0, 0
+                    jz .handle_flamesZ
+                    cmpi r0, 128
+                    jge .handle_flamesZ
+                    ldi r0, 1
+                    stm r0, data.ko_plyrs
+.handle_flamesZ:    ret
 
 handle_bombs:       ldm r0, data.num_bombs
                     ldi r1, data.bombs
@@ -209,8 +256,8 @@ move_plyrs:         ldi r2, data.pos_plyrs
                     mov r3, r0
                     pop r1
                     pop r0
-                    cmpi r3, 0
-                    jnz .move_plyrsZ
+                    cmpi r3, 128
+                    jge .move_plyrsZ
                     addi r2, 2
                     ldm r3, r2  ; x1 = x + move_lut[vec_dir].x1
                     add r3, r8
@@ -222,8 +269,8 @@ move_plyrs:         ldi r2, data.pos_plyrs
                     mov r0, r3
                     mov r1, r4
                     call map_contents_at
-                    cmpi r0, 0
-                    jnz .move_plyrsZ
+                    cmpi r0, 128
+                    jge .move_plyrsZ
                     ldi r2, data.pos_plyrs
                     stm r8, r2  ; pos.x = x
                     addi r2, 2
@@ -368,6 +415,8 @@ data.speed_plyrs:   dw 1
 data.vec_plyrs:     dw 0, 0
 ; Use Up=0, Down=1, Left=2, Right=3. 
 data.dir_plyrs:     dw 1
+
+data.ko_plyrs:      dw 0
 
 data.move_lut:      dw -4,-3,  3,-3,
                     dw -4, 2,  3, 2,
