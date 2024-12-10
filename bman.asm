@@ -66,25 +66,35 @@ handle_flames:      ldi r2, data.pos_plyrs
 
 handle_bombs:       ldm r0, data.num_bombs
                     ldi r1, data.bombs
-                    ldi r2, 6
+                    ldi r2, 8
 .handle_bombsL:     subi r0, 1
                     jn .handle_bombsZ
                     mul r0, r2, r3
                     add r3, r1
                     addi r3, 4      ; offsetof(bomb.timer)
                     ldm r4, r3
-                    subi r4, 1
+                    cmpi r4, 0      ; bomb.timer == 0 already -> skip
+                    jz .handle_bombsL
+                    subi r4, 1      ; bomb.timer dec to 0 -> explode
                     stm r4, r3
                     jnz .handle_bombsL
-                    subi r3, 4
+                    addi r3, 2      ; offsetof(bomb.flags) - offsetof(bomb.timer)
+                    ldm r4, r3
+                    andi r4, 3
+                    shl r4, 2
+                    addi r4, data.bombs_plyrs   ; offset to this player's bomb count
+                    ldm r5, r4
+                    addi r5, 1      ; increment it as a bomb of theirs just exploded
+                    stm r5, r4      ; store it
+                    subi r3, 6      ; remove bomb.flags offset -> bomb.x
                     ldi r4, 0
-                    ldm r5, r3
-                    stm r4, r3
+                    ldm r5, r3      ; save bomb.x
+                    stm r4, r3      ; and overwrite to 0 since it exploded
                     addi r3, 2
-                    ldm r6, r3
-                    stm r4, r3
-                    addi r3, 2
-                    stm r4, r3
+                    ldm r6, r3      ; save bomb.y
+                    stm r4, r3      ; and overwrite to 0 since it exploded
+                    ;addi r3, 2
+                    ;stm r4, r3      ; overwrite bomb.timer to 0 since it exploded
                     subi r0, 1
                     stm r0, data.num_bombs
                     push r0
@@ -198,6 +208,11 @@ handle_pad:         ldm r0, 0xfff0
                     jmp .handle_padZ
 .handle_padZ:       tsti r0, 64 ; A
                     jz .handle_padZZ
+                    ldm r1, data.bombs_plyrs
+                    cmpi r1, 0
+                    jz .handle_padZZ
+bp:                 subi r1, 1
+                    stm r1, data.bombs_plyrs
 .handle_padAb:      ldi r1, 1
                     stm r1, data.num_bombs
                     ldi r1, data.pos_plyrs
@@ -215,16 +230,8 @@ handle_pad:         ldm r0, 0xfff0
                     addi r3, 8
                     stm r3, r2
                     addi r2, 2
-                    ldi r1, 60  ; Set bomb with 60 frame timer
+                    ldi r1, 55  ; Set bomb with 40 frame timer
                     stm r1, r2
-                    ;shr r3, 4
-                    ;muli r3, 20
-                    ;add r3, r4
-                    ;addi r3, data.level
-                    ;ldm r2, r3
-                    ;andi r2, 0xff00
-                    ;ori r2, 1
-                    ;stm r2, r3
 .handle_padZZ:      ret
 
 move_plyrs:         ldi r2, data.pos_plyrs
@@ -334,7 +341,7 @@ drw_objs:           ldm r0, data.num_bombs
 .drw_objsBbL:       subi r0, 1
                     jn .drw_objsA
 .drw_objsBbs:       mov r1, r0
-                    muli r1, 6
+                    muli r1, 8
                     addi r1, data.bombs
                     ldm r2, r1
                     addi r1, 2
@@ -409,24 +416,28 @@ data.sp:            dw 0
 
 data.ptr_spr_plyr:  dw data.spr_plyr
 
-data.pos_plyrs:     dw 24, 24
+data.pos_plyrs:     dw 0,0, 0,0, 0,0, 0,0
 
-data.speed_plyrs:   dw 1
-data.vec_plyrs:     dw 0, 0
+data.speed_plyrs:   dw 1, 1, 1, 1,
+data.vec_plyrs:     dw 0,0, 0,0, 0,0, 0,0
 ; Use Up=0, Down=1, Left=2, Right=3. 
-data.dir_plyrs:     dw 1
+data.dir_plyrs:     dw 1, 1, 1, 1
 
-data.ko_plyrs:      dw 0
+data.ko_plyrs:      dw 0, 0, 0, 0
 
 data.move_lut:      dw -4,-3,  3,-3,
                     dw -4, 2,  3, 2,
                     dw -4,-3, -4, 2,
                     dw  3,-3,  3, 2,
 
+data.bombs_plyrs:   dw 1, 1, 1, 1
+
 data.num_bombs:     dw 0
-; Format: x : word, y : word, timer: word
-data.bombs:         dw 0,0,0,  0,0,0,  0,0,0,  0,0,0,
-                    dw 0,0,0,  0,0,0,  0,0,0,  0,0,0,
+; Format: x : word, y : word, timer: word, flags: word
+; flags:
+;   bits 1..0 = player
+data.bombs:         dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0,
+                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0,
 
 data.level:         db 0x80,0x80,0x80,0x80,0x80,0x80,0x80,0x80,0x80,0x80
                     db 0x80,0x80,0x80,0x80,0x80,0x80,0x80,0x80,0x80,0x80
