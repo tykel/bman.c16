@@ -109,32 +109,84 @@ handle_bombs:       ldm r0, data.num_bombs
                     jmp .handle_bombsL
 .handle_bombsZ:     ret
 
-expl_bomb:          ldi ra, 32
-.expl_bombL:        push r0
+expl_bomb:          ldm rb, data.pow_plyrs      ; Convert a power (0..4) to a...
+                    ldi ra, 1                   ; ...tile offsets to extend... 
+                    shl ra, rb                  ; flames to (16..128).
+                    shl ra, 4
+
+                    push r0                     ; Start
                     push r1
-                    add r0, ra
-                    subi r0, 16
+                    call map_put_flame          ; Cell where player is located.
+                    pop r1                      ; Assume nothing else there,
+                    pop r0                      ; since a bomb was placed.
+
+.expl_bombLeft:     ldi rc, 0                   ; Scan left, until solid...
+.expl_bombLeftL:    addi rc, 16                 ; ...block or power extent...
+                    cmp rc, ra                  ; ...reached.
+                    jg .expl_bombRight
+                    push r0
+                    push r1
+                    add r0, rc
                     call map_put_flame
                     pop r1
                     pop r0
-                    subi ra, 16
-                    jnn .expl_bombL
-                    ldi ra, 32
-.expl_bombL2:       push r0
+                    cmpi r2, 0x80
+                    jl .expl_bombLeftL
+
+.expl_bombRight:    ldi rc, 0                   ; Ditto, right...
+.expl_bombRightL:   addi rc, 16
+                    cmp rc, ra
+                    jg .expl_bombUp
+                    push r0
                     push r1
-                    add r1, ra
-                    subi r1, 16
+                    sub r0, rc
                     call map_put_flame
                     pop r1
                     pop r0
-                    subi ra, 16
-                    jnn .expl_bombL2
-.expl_bombSnd:      sng 0x30, 0xf3f3
+                    cmpi r2, 0x80
+                    jl .expl_bombRightL
+
+.expl_bombUp:       ldi rc, 0                   ; Ditto, up...
+.expl_bombUpL:      addi rc, 16
+                    cmp rc, ra
+                    jg .expl_bombDown
+                    push r0
+                    push r1
+                    sub r1, rc
+                    call map_put_flame
+                    pop r1
+                    pop r0
+                    cmpi r2, 0x80
+                    jl .expl_bombUpL
+
+.expl_bombDown:     ldi rc, 0                   ; Ditto, down...
+.expl_bombDownL:    addi rc, 16
+                    cmp rc, ra
+                    jg .expl_bombSnd
+                    push r0
+                    push r1
+                    add r1, rc
+                    call map_put_flame
+                    pop r1
+                    pop r0
+                    cmpi r2, 0x80
+                    jl .expl_bombDownL
+
+.expl_bombSnd:      sng 0x30, 0xf3f3            ; Play the explosion sound.
                     ldi r0, 2000
                     snp r0, 200
                     ret
 
-map_put_flame:      shr r1, 4
+map_put_flame:      ldi r2, 0x80
+                    cmpi r0, 0
+                    jl .map_put_flameZ
+                    cmpi r0, 304
+                    jg .map_put_flameZ
+                    cmpi r1, 0
+                    jl .map_put_flameZ
+                    cmpi r1, 304
+                    jg .map_put_flameZ
+                    shr r1, 4
                     muli r1, 20
                     shr r0, 4
                     add r0, r1
@@ -230,8 +282,12 @@ bp:                 subi r1, 1
                     addi r3, 8
                     stm r3, r2
                     addi r2, 2
-                    ldi r1, 55  ; Set bomb with 40 frame timer
+                    ldi r1, 75  ; Set bomb with 75 frame timer
                     stm r1, r2
+                    addi r2, 2
+                    ldm r3, data.pow_plyrs
+                    shl r3, 2
+                    stm r3, r2  ; Set bomb power to player power
 .handle_padZZ:      ret
 
 move_plyrs:         ldi r2, data.pos_plyrs
@@ -368,9 +424,10 @@ drw_plyr:           shl r0, 2   ; player index to offset in pos_plyrs
                     addi r0, 2
                     ldm r2, r0  ; r2 <= player y
                     spr 0x1008
-                    ldm r3, data.ptr_spr_plyr
                     subi r1, 8
                     subi r2, 8
+                    drw r1, r2, data.spr_shdw
+                    ldm r3, data.ptr_spr_plyr
                     drw r1, r2, r3
                     tsti r2, 8  ; Only redraw tiles if player in top half of cell
                     jnz .drw_plyrZ
@@ -422,6 +479,7 @@ data.speed_plyrs:   dw 1, 1, 1, 1,
 data.vec_plyrs:     dw 0,0, 0,0, 0,0, 0,0
 ; Use Up=0, Down=1, Left=2, Right=3. 
 data.dir_plyrs:     dw 1, 1, 1, 1
+data.pow_plyrs:     dw 1, 0, 0, 0
 
 data.ko_plyrs:      dw 0, 0, 0, 0
 
@@ -435,13 +493,14 @@ data.bombs_plyrs:   dw 1, 1, 1, 1
 data.num_bombs:     dw 0
 ; Format: x : word, y : word, timer: word, flags: word
 ; flags:
+;   bits 7..2 = power (# of extra cells in each direction for flame)
 ;   bits 1..0 = player
 data.bombs:         dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0,
                     dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0,
 
 data.level:         db 0x80,0x80,0x80,0x80,0x80,0x80,0x80,0x80,0x80,0x80
                     db 0x80,0x80,0x80,0x80,0x80,0x80,0x80,0x80,0x80,0x80
-                    db 0x80,0x00,0x00,0x00,0x81,0x81,0x81,0x81,0x00,0x00
+                    db 0x80,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00
                     db 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x80
                     db 0x80,0x80,0x00,0x80,0x81,0x80,0x00,0x80,0x00,0x80
                     db 0x00,0x80,0x00,0x80,0x00,0x80,0x00,0x80,0x00,0x80
