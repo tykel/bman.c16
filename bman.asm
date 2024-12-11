@@ -204,7 +204,7 @@ map_put_flame:      ldi r2, 0x80
 handle_pad:         ldm r0, 0xfff0
                     ldi r1, data.vec_plyrs
                     ldm r4, data.anikey
-                    divi r4, 5
+                    divi r4, 7
                     muli r4, 512
                     addi r4, data.spr_plyr
                     ldi rf, 0
@@ -220,7 +220,7 @@ handle_pad:         ldm r0, 0xfff0
 .handle_pad0:       ldm r9, data.anikey
                     subi r9, 1
                     jnn .handle_pad1
-                    ldi r9, 19
+                    ldi r9, 27
 .handle_pad1:       stm r9, data.anikey
                     ldm r2, data.speed_plyrs
 .handle_padUp:      tsti r0, 1
@@ -358,9 +358,10 @@ drw_grid:           spr 0x1008
                     ldm r5, r4
                     mov r8, r5
                     andi r8, 0xff00
-                    ldi r6, data.spr_blck
+                    ldi r6, data.spr_floor
                     andi r5, 0xff
-                    jz .drw_gridL1
+                    jz .drw_gridL0
+                    ldi r6, data.spr_blck
                     mov r7, r5              ; tile addr = (i - 128) * 128 + spr.blck
                     subi r7, 128
                     muli r7, 128
