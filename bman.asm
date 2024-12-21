@@ -84,10 +84,10 @@ handle_bombs:       ldi r0, data.bombs
                     subi r4, 1      ; bomb.timer dec to 0 -> explode
                     stm r4, r3
                     jnz .handle_bombsL
-                    addi r3, 2      ; offsetof(bomb.flags) - offsetof(bomb.timer)
+.handle_bombsX:     addi r3, 2      ; offsetof(bomb.flags) - offsetof(bomb.timer)
                     ldm r4, r3
                     andi r4, 3
-                    shl r4, 2
+                    shl r4, 1
                     addi r4, data.bombs_plyrs   ; offset to this player's bomb count
                     ldm r5, r4
                     addi r5, 1      ; increment it as a bomb of theirs just exploded
@@ -112,6 +112,30 @@ handle_bombs:       ldi r0, data.bombs
 .handle_bombsZ:     ret
 
 ;------------------------------------------------------------------------------
+; expl_bomb_zero()
+;
+; IN:
+;   r0: bomb.x
+;   r1: bomb.y
+;   r2: bomb.id
+;------------------------------------------------------------------------------
+expl_bomb_zero:     andi r2, 0x0f
+                    muli r2, 8
+                    addi r2, data.bombs
+                    addi r2, 4
+                    ldi r3, 0                   ; Set bomb timer to 0
+                    stm r3, r2
+                    addi r2, 2
+                    ldm r3, r2
+                    shl r3, 1
+                    addi r3, data.bombs_plyrs
+                    ldm r2, r3
+                    addi r2, 1                  ; Inc. that player's bomb count
+                    stm r2, r3
+                    call expl_bomb
+                    ret
+
+;------------------------------------------------------------------------------
 ; expl_bomb()
 ;
 ; IN:
@@ -122,7 +146,7 @@ expl_bomb:          ldm ra, data.pow_plyrs      ; Convert power to tile offs.
                     shl ra, 4
 
                     mov r2, r1                  ; Remove bomb from the level
-                    muli r2, 15
+                    muli r2, 20
                     add r2, r0
                     shr r2, 4
                     addi r2, data.level
@@ -140,19 +164,8 @@ expl_bomb:          ldm ra, data.pow_plyrs      ; Convert power to tile offs.
 .expl_bombLeftL:    addi rc, 16                 ; ...block or power extent...
                     cmp rc, ra                  ; ...reached.
                     jg .expl_bombRight
-                    push r0
-                    push r1
-                    add r0, rc
-                    call map_put_flame
-                    pop r1
-                    pop r0
-                    cmpi r2, 0x80
-                    jl .expl_bombLeftL
-
-.expl_bombRight:    ldi rc, 0                   ; Ditto, right...
-.expl_bombRightL:   addi rc, 16
-                    cmp rc, ra
-                    jg .expl_bombUp
+                    ;cmpi rc, 0
+                    ;jl .expl_bombRight
                     push r0
                     push r1
                     sub r0, rc
@@ -160,12 +173,41 @@ expl_bomb:          ldm ra, data.pow_plyrs      ; Convert power to tile offs.
                     pop r1
                     pop r0
                     cmpi r2, 0x80
+                    jl .expl_bombLeftL          ; id < 128 => flame
+                    cmpi r2, 0xf0
+                    jl .expl_bombRight          ; 128 <= id < 240 => tile
+                    pushall                     ; 240 < id => bomb
+                    call expl_bomb_zero
+                    popall
+                    jmp .expl_bombLeftL
+
+.expl_bombRight:    ldi rc, 0                   ; Ditto, right...
+.expl_bombRightL:   addi rc, 16
+                    cmp rc, ra
+                    jg .expl_bombUp
+                    ;cmpi rc, 320
+                    ;jge .expl_bombUp
+                    push r0
+                    push r1
+                    add r0, rc
+                    call map_put_flame
+                    pop r1
+                    pop r0
+                    cmpi r2, 0x80
                     jl .expl_bombRightL
+                    cmpi r2, 0xf0
+                    jl .expl_bombUp
+                    pushall
+                    call expl_bomb_zero
+                    popall
+                    jmp .expl_bombRightL
 
 .expl_bombUp:       ldi rc, 0                   ; Ditto, up...
 .expl_bombUpL:      addi rc, 16
                     cmp rc, ra
                     jg .expl_bombDown
+                    ;cmpi rc, 0
+                    ;jl .expl_bombDown
                     push r0
                     push r1
                     sub r1, rc
@@ -174,11 +216,19 @@ expl_bomb:          ldm ra, data.pow_plyrs      ; Convert power to tile offs.
                     pop r0
                     cmpi r2, 0x80
                     jl .expl_bombUpL
+                    cmpi r2, 0xf0
+                    jl .expl_bombDown
+                    pushall
+                    call expl_bomb_zero
+                    popall
+                    jmp .expl_bombUpL
 
 .expl_bombDown:     ldi rc, 0                   ; Ditto, down...
 .expl_bombDownL:    addi rc, 16
                     cmp rc, ra
                     jg .expl_bombSnd
+                    ;cmpi rc, 240
+                    ;jge .expl_bombSnd
                     push r0
                     push r1
                     add r1, rc
@@ -187,6 +237,12 @@ expl_bomb:          ldm ra, data.pow_plyrs      ; Convert power to tile offs.
                     pop r0
                     cmpi r2, 0x80
                     jl .expl_bombDownL
+                    cmpi r2, 0xf0
+                    jl .expl_bombSnd
+                    pushall
+                    call expl_bomb_zero
+                    popall
+                    jmp .expl_bombDownL
 
 .expl_bombSnd:      sng 0x30, 0xf3f3            ; Play the explosion sound.
                     ldi r0, 2000
@@ -221,7 +277,7 @@ map_put_flame:      ldi r2, 0x80
                     jz .map_put_flameZ         ; 128 < v < 255 : destr. tile
                     andi r1, 0xff00
                     addi r1, 40                 ; add a 40-frame flame
-                    stm r1, r0
+.map_put_flameW:    stm r1, r0
 .map_put_flameZ:    ret
 
 ;------------------------------------------------------------------------------
@@ -229,10 +285,7 @@ map_put_flame:      ldi r2, 0x80
 ;------------------------------------------------------------------------------
 handle_pad:         ldm r0, 0xfff0
                     ldi r1, data.vec_plyrs
-                    ldm r4, data.anikey
-                    divi r4, 7
-                    muli r4, 512
-                    addi r4, data.spr_plyr
+                    ldi r4, data.spr_plyr
                     ldi rf, 0
                     stm rf, r1
                     addi r1, 2
@@ -242,7 +295,7 @@ handle_pad:         ldm r0, 0xfff0
                     jnz .handle_pad0
                     ldi r0, 0
                     stm r0, data.anikey
-                    jmp .handle_padA
+                    jmp .handle_padZZ
 .handle_pad0:       ldm r9, data.anikey
                     subi r9, 1
                     jnn .handle_pad1
@@ -287,7 +340,7 @@ handle_pad:         ldm r0, 0xfff0
 .handle_padA:       tsti r0, 64 ; A
                     jz .handle_padZZ
                     ldm r0, data.btn_a_dn
-                    cmpi r0, 1
+                    cmpi r0, 0
                     jz .handle_padZZ
                     
                     ldi r1, data.pos_plyrs
@@ -400,11 +453,17 @@ move_plyrs:         ldi r2, data.pos_plyrs
                     mov r3, r0
                     pop r1
                     pop r0
-                    cmpi r3, 0xf0
+                    cmpi r3, 0xc0
                     jge .move_plyrs1
                     cmpi r3, 0x80
                     jge .move_plyrsZ
-.move_plyrs1:       addi r2, 2
+.move_plyrs1:       push r2
+                    push r3
+                    mov r2, r3
+                    call handle_pwrup
+                    pop r3
+                    pop r2
+                    addi r2, 2
                     ldm r3, r2  ; x1 = x + move_lut[vec_dir].x1
                     add r3, r8
                     stm r3, debug.x1
@@ -415,7 +474,7 @@ move_plyrs:         ldi r2, data.pos_plyrs
                     mov r0, r3
                     mov r1, r4
                     call map_contents_at
-                    cmpi r0, 0xf0
+                    cmpi r0, 0xc0
                     jge .move_plyrs2
                     cmpi r0, 0x80
                     jge .move_plyrsZ
@@ -424,6 +483,17 @@ move_plyrs:         ldi r2, data.pos_plyrs
                     addi r2, 2
                     stm r9, r2  ; pos.y = y
 .move_plyrsZ:       ret
+
+;------------------------------------------------------------------------------
+; handle_pwrup()
+;
+; IN:
+;   r0: x
+;   r1: y
+;   r2: map item ID
+;------------------------------------------------------------------------------
+handle_pwrup:       nop
+                    ret
 
 ;------------------------------------------------------------------------------
 ; map_put_at()
@@ -478,6 +548,12 @@ drw_grid:           spr 0x1008
                     ldi r2, 304             ; r2 <= tile x in pixels
                     ldi r3, 224             ; r3 <= tile y in pixels
 .drw_gridL:         add r0, r1, r4
+                    cmpi r2, 0
+                    jnz .drw_gridY
+                    cmpi r3, 32
+                    jnz .drw_gridY
+.drw_gridM:         nop
+.drw_gridY: 
                     ldm r5, r4
                     mov r8, r5
                     andi r8, 0xff00
@@ -488,7 +564,14 @@ drw_grid:           spr 0x1008
                     jl .drw_gridLB
                     ldi r6, data.spr_bomb
                     jmp .drw_gridL0
-.drw_gridLB:        ldi r6, data.spr_blck
+.drw_gridLB:        cmpi r5, 0xc0
+                    jl .drw_gridLBlk
+                    ldi r6, data.spr_pwrup_flame
+                    andi r5, 0xf
+                    muli r5, 128
+                    add r6, r5
+                    jmp .drw_gridL0
+.drw_gridLBlk:      ldi r6, data.spr_blck
                     mov r7, r5              ; tile addr = (i - 128) * 128 + spr.blck
                     subi r7, 128
                     muli r7, 128
@@ -572,6 +655,10 @@ drw_plyr:           shl r0, 2   ; player index to offset in pos_plyrs
                     subi r2, 8
                     drw r1, r2, data.spr_shdw
                     ldm r3, data.ptr_spr_plyr
+                    ldm r4, data.anikey
+                    divi r4, 7
+                    muli r4, 512
+                    add r3, r4
                     drw r1, r2, r3
                     tsti r2, 8  ; Only redraw tiles if player in top half of cell
                     jnz .drw_plyrZ
@@ -628,7 +715,9 @@ data.speed_plyrs:   dw 1, 1, 1, 1,
 data.vec_plyrs:     dw 0,0, 0,0, 0,0, 0,0
 ; Use Up=0, Down=1, Left=2, Right=3. 
 data.dir_plyrs:     dw 1, 1, 1, 1
-data.pow_plyrs:     dw 1, 1, 1, 1
+data.pow_plyrs:     dw 3, 1, 1, 1
+
+data.bombs_plyrs:   dw 3, 1, 1, 1
 
 data.ko_plyrs:      dw 0, 0, 0, 0
 
@@ -636,8 +725,6 @@ data.move_lut:      dw -4,-3,  3,-3,
                     dw -4, 2,  3, 2,
                     dw -4,-3, -4, 2,
                     dw  3,-3,  3, 2,
-
-data.bombs_plyrs:   dw 3, 1, 1, 1
 
 ; Format: x : word, y : word, timer: word, flags: word
 ; flags:
@@ -650,15 +737,18 @@ data.bombs:         dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0,
 
 ; Level map format (hex):
 ;   00..79:  flame, value is remaining frame time
-;   80..ef:  tile
+;   80..bf:  tile
+;   c0..ef:  power-up
+;       c0 = +1 flame length
+;       c1 = +1 bomb drop
 ;   f0..ff:  bomb (f0 == bomb, mask 0f for id)
 
 data.level:         db 0x80,0x80,0x80,0x80,0x80,0x80,0x80,0x80,0x80,0x80
                     db 0x80,0x80,0x80,0x80,0x80,0x80,0x80,0x80,0x80,0x80
                     db 0x80,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00
                     db 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x80
-                    db 0x80,0x80,0x00,0x80,0x81,0x80,0x00,0x80,0x00,0x80
-                    db 0x00,0x80,0x00,0x80,0x00,0x80,0x00,0x80,0x00,0x80
+                    db 0x80,0x80,0x00,0x80,0x81,0x80,0xc0,0x80,0x00,0x80
+                    db 0x00,0x80,0x00,0x80,0x00,0x80,0xc1,0x80,0x00,0x80
                     db 0x80,0x81,0x81,0x00,0x81,0x00,0x00,0x00,0x00,0x00
                     db 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x80
                     db 0x80,0x00,0x80,0x00,0x80,0x00,0x80,0x00,0x80,0x00
