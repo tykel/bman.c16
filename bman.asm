@@ -22,8 +22,8 @@ game_loop:          ldm r0, data.ko_plyrs
                     cls
                     bgc 0xb
                     call drw_grid
-                    ;call drw_objs
                     call drw_plyrs
+                    call drw_objs
                     vblnk
                     jmp game_loop
 .game_loopKO:       bgc 3
@@ -145,10 +145,12 @@ expl_bomb_zero:     andi r2, 0x0f
 expl_bomb:          ldm ra, data.pow_plyrs      ; Convert power to tile offs.
                     shl ra, 4
 
-                    mov r2, r1                  ; Remove bomb from the level
-                    muli r2, 20
-                    add r2, r0
+                    mov r3, r1                  ; Remove bomb from the level
+                    shr r3, 4
+                    muli r3, 20
+                    mov r2, r0
                     shr r2, 4
+                    add r2, r3
                     addi r2, data.level
                     ldm r3, r2
                     andi r3, 0xff00             ; by masking out low byte read
@@ -255,6 +257,9 @@ expl_bomb:          ldm ra, data.pow_plyrs      ; Convert power to tile offs.
 ; IN:
 ;   r0: pos.x
 ;   r1: pos.y
+;
+; OUT:
+;   r2: the (new) contents of the level map at pos.(x, y)
 ;------------------------------------------------------------------------------
 map_put_flame:      ldi r2, 0x80
                     cmpi r0, 0
@@ -369,16 +374,16 @@ handle_pad:         ldm r0, 0xfff0
 .handle_padAb:      ldi r2, data.bombs
                     mov r3, r2
                     addi r3, 120                ; 15 * 8 => 16th bomb offset
-.handle_padAc:      addi r3, 4
+.handle_padAc:      addi r3, 4                  ; offs(bomb.timer) = 4
                     ldm r4, r3
                     subi r3, 4
-                    cmpi r4, 0
+                    cmpi r4, 0                  ; bomb.timer == 0 ? explode!
                     jz .handle_padAd
-                    subi r3, 8
-                    cmp r3, r2
+                    subi r3, 8                  ; otherwise, keep iterating
+                    cmp r3, r2                  ; ( sizeof(bomb) == 8 )
                     jge .handle_padAc
-.handle_padAd:      mov rc, r3
-                    subi rc, data.bombs
+.handle_padAd:      mov rc, r3                  ; rc <= bomb index
+                    subi rc, data.bombs         ; i.e. (&bomb[i] - &bomb[0])/sizeof(bomb)
                     shr rc, 3
                     ldi r1, data.pos_plyrs
                     ldm r5, r1
@@ -409,7 +414,7 @@ handle_pad:         ldm r0, 0xfff0
                     andi rb, 0xff00
                     addi rb, 0xf0
                     add rb, rc
-                    stm rb, ra
+.handle_padDBb:     stm rb, ra
 .handle_padZZ:      ldm r0, 0xfff0
                     shr r0, 6
                     not r0
@@ -453,6 +458,8 @@ move_plyrs:         ldi r2, data.pos_plyrs
                     mov r3, r0
                     pop r1
                     pop r0
+                    cmpi r3, 0xf0
+                    jge .move_plyrs11
                     cmpi r3, 0xc0
                     jge .move_plyrs1
                     cmpi r3, 0x80
@@ -463,7 +470,7 @@ move_plyrs:         ldi r2, data.pos_plyrs
                     call handle_pwrup
                     pop r3
                     pop r2
-                    addi r2, 2
+.move_plyrs11:      addi r2, 2
                     ldm r3, r2  ; x1 = x + move_lut[vec_dir].x1
                     add r3, r8
                     stm r3, debug.x1
@@ -492,8 +499,27 @@ move_plyrs:         ldi r2, data.pos_plyrs
 ;   r1: y
 ;   r2: map item ID
 ;------------------------------------------------------------------------------
-handle_pwrup:       nop
-                    ret
+handle_pwrup:       ldm r0, debug.x0
+                    ldm r1, debug.y0
+                    shr r1, 4
+                    muli r1, 20
+                    shr r0, 4
+                    add r0, r1
+                    addi r0, data.level
+                    ldm r1, r0
+                    andi r1, 0xff00
+                    stm r1, r0
+                    cmpi r2, 0xc0
+                    jnz .handle_pwrupA
+                    ldm r0, data.pow_plyrs
+                    addi r0, 1
+                    stm r0, data.pow_plyrs
+                    jmp .handle_pwrupZ
+.handle_pwrupA:     cmpi r2, 0xc1
+                    ldm r0, data.bombs_plyrs
+                    addi r0, 1
+                    stm r0, data.bombs_plyrs
+.handle_pwrupZ:     ret
 
 ;------------------------------------------------------------------------------
 ; map_put_at()
@@ -548,21 +574,19 @@ drw_grid:           spr 0x1008
                     ldi r2, 304             ; r2 <= tile x in pixels
                     ldi r3, 224             ; r3 <= tile y in pixels
 .drw_gridL:         add r0, r1, r4
-                    cmpi r2, 0
-                    jnz .drw_gridY
-                    cmpi r3, 32
-                    jnz .drw_gridY
-.drw_gridM:         nop
-.drw_gridY: 
+                    cmpi r4, 0x9b9
+                    jnz .drw_gridPPP
+.drw_gridPP:        nop                     ; addr == 0x09ad
+.drw_gridPPP:
                     ldm r5, r4
                     mov r8, r5
                     andi r8, 0xff00
                     ldi r6, data.spr_floor
                     andi r5, 0xff
                     jz .drw_gridL0
-                    cmpi r5, 0xf0
+.drw_gridNF:        cmpi r5, 0xf0
                     jl .drw_gridLB
-                    ldi r6, data.spr_bomb
+.drw_gridBb:        ldi r6, data.spr_bomb
                     jmp .drw_gridL0
 .drw_gridLB:        cmpi r5, 0xc0
                     jl .drw_gridLBlk
@@ -578,9 +602,9 @@ drw_grid:           spr 0x1008
                     add r6, r7              ; r6 <= block tile sprite
                     cmpi r5, 128
                     jge .drw_gridL0
-                    subi r5, 1
-                    add r5, r8
-                    stm r5, r4
+                    subi r5, 1              ; tile is expl. flame...
+                    add r5, r8              ; ... so decrement timer and...
+                    stm r5, r4              ; ... write back to map.
                     ldi r6, data.spr_expl   ; r6 <= expl. flame sprite
 .drw_gridL0:        drw r2, r3, r6
 .drw_gridL1:        subi r1, 1
@@ -610,33 +634,13 @@ drw_plyrs:          ;push r0
 ;------------------------------------------------------------------------------
 ; drw_objs()
 ;------------------------------------------------------------------------------
-drw_objs:           ldi r0, data.bombs
-                    mov r1, r0
-                    addi r1, 128
-.drw_objsBbL:       subi r1, 8
-                    cmp r1, r0
-                    jl .drw_objsA
-.drw_objsBbs:       addi r1, 4              ; if bomb.timer is 0, skip drawing
-                    ldm r2, r1
-                    subi r1, 4
-                    cmpi r2, 0
-                    jz .drw_objsBbL
-                    ldm r2, r1              ; otherwise, read bomb.x, bomb.y
-                    addi r1, 2
-                    ldm r3, r1
-                    subi r1, 2
-                    subi r2, 8
-                    subi r3, 8
-.db:                drw r2, r3, data.spr_bomb
-                    jmp .drw_objsBbL
-.drw_objsA:         ret
-                    spr 0x0201              ; debug markers for collision detection
+drw_objs:           spr 0x0201              ; debug markers for collision detection
                     ldm r0, debug.x0
                     ldm r1, debug.y0
                     drw r0, r1, debug.spr
-                    ldm r0, debug.x1
-                    ldm r1, debug.y1
-                    drw r0, r1, debug.spr
+                    ;ldm r0, debug.x1
+                    ;ldm r1, debug.y1
+                    ;drw r0, r1, debug.spr
                     ret
 
 ;------------------------------------------------------------------------------
@@ -715,9 +719,9 @@ data.speed_plyrs:   dw 1, 1, 1, 1,
 data.vec_plyrs:     dw 0,0, 0,0, 0,0, 0,0
 ; Use Up=0, Down=1, Left=2, Right=3. 
 data.dir_plyrs:     dw 1, 1, 1, 1
-data.pow_plyrs:     dw 3, 1, 1, 1
+data.pow_plyrs:     dw 1, 1, 1, 1
 
-data.bombs_plyrs:   dw 3, 1, 1, 1
+data.bombs_plyrs:   dw 1, 1, 1, 1
 
 data.ko_plyrs:      dw 0, 0, 0, 0
 
