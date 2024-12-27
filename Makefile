@@ -1,4 +1,4 @@
-ASM_FILES := bman.asm gfx.asm
+ASM_FILES := bman.asm gfx.asm util.asm
 BIN_FILES := data/player.bin data/shadow.bin data/bomb.bin data/expl.bin data/block.bin data/crate.bin data/floor.bin data/pwrup_flame.bin data/pwrup_bombs.bin
 
 bman.c16: $(ASM_FILES) $(BIN_FILES)

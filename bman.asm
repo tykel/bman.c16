@@ -24,6 +24,7 @@ game_loop:          ldm r0, data.ko_plyrs
                     call drw_grid
                     call drw_plyrs
                     call drw_objs
+                    call drw_hud
                     vblnk
                     jmp game_loop
 .game_loopKO:       bgc 3
@@ -516,6 +517,7 @@ handle_pwrup:       ldm r0, debug.x0
                     stm r0, data.pow_plyrs
                     jmp .handle_pwrupZ
 .handle_pwrupA:     cmpi r2, 0xc1
+                    jnz .handle_pwrupZ
                     ldm r0, data.bombs_plyrs
                     addi r0, 1
                     stm r0, data.bombs_plyrs
@@ -638,9 +640,9 @@ drw_objs:           spr 0x0201              ; debug markers for collision detect
                     ldm r0, debug.x0
                     ldm r1, debug.y0
                     drw r0, r1, debug.spr
-                    ;ldm r0, debug.x1
-                    ;ldm r1, debug.y1
-                    ;drw r0, r1, debug.spr
+                    ldm r0, debug.x1
+                    ldm r1, debug.y1
+                    drw r0, r1, debug.spr
                     ret
 
 ;------------------------------------------------------------------------------
@@ -697,14 +699,36 @@ drw_plyr:           shl r0, 2   ; player index to offset in pos_plyrs
                     drw r2, r3, r0
 .drw_plyrZ:         ret
 
+drw_hud:            call drw_debug_hud
+                    ret
+
+drw_debug_hud:      
+                    ldm r0, data.pow_plyrs
+                    ldi r1, data.str
+                    call sub_r2bcd3
+                    ldi r0, data.str
+                    ldi r1, 0
+                    ldi r2, 224
+                    call sub_drwstr
+                    ldm r0, data.bombs_plyrs
+                    ldi r1, data.str
+                    call sub_r2bcd3
+                    ldi r0, data.str
+                    ldi r1, 64
+                    ldi r2, 224
+                    call sub_drwstr
+                    ret
+
 ;------------------------------------------------------------------------------
 ; BEGIN - Data
+
+data.str:   db "   "
 
 debug.x0:   dw 0
 debug.y0:   dw 0
 debug.x1:   dw 0
 debug.y1:   dw 0
-debug.spr:  dw 0xffff
+debug.spr:  dw 0x4444
 
 data.btn_a_dn:      dw 0
 
