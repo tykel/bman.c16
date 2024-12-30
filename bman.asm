@@ -65,18 +65,87 @@ handle_flames:      ldi r2, data.pos_plyrs
                     cmpi r0, 128
                     jge .handle_flamesZ
                     ldi r0, 1
-                    stm r0, data.ko_plyrs
+.handle_flamesKO:   stm r0, data.ko_plyrs
 .handle_flamesZ:    ret
 
 ;------------------------------------------------------------------------------
+; list_insert()
+;   Insert passed value into first empty element of list that is 0.
+;
+; IN:
+;   r0: list addr.
+;   r1: value
+;------------------------------------------------------------------------------
+list_insert:        push r2
+                    push r3
+                    push r1
+                    ldi r1, 0x8000
+                    mov r3, r0
+                    addi r3, 32
+                    ldm r2, r0
+.list_insertL:      tst r2, r1
+                    jz .list_insertZ
+                    shr r1, 1
+                    subi r3, 2
+                    jmp .list_insertL
+.list_insertZ:      or r2, r1
+                    stm r2, r0
+                    pop r1
+                    stm r1, r3
+                    pop r3
+                    pop r2
+                    ret
+
+;------------------------------------------------------------------------------
+; list_last()
+;   Return address of last element in list.
+;   That list entry will be marked as empty before return. (metadata modified)
+;   Returns 0 if there are no non-empty entries in list. 
+; IN:
+;   r0: list addr.
+; OUT:
+;   r0: list entry addr.
+;------------------------------------------------------------------------------
+list_last:          push r1
+                    push r2
+                    push r3
+                    ldm r1, r0
+                    mov r2, r0
+                    stm r0, data.list_last.r0
+                    ldi r0, 0
+                    tsti r1, 0xffff
+                    jz .list_lastZ
+                    ldi r3, 0x8000
+                    addi r2, 32
+.list_lastL:        tst r1, r3
+                    jnz .list_lastZF
+                    shr r3, 1
+                    subi r2, 2
+                    jmp .list_lastL
+.list_lastZF:       not r3
+                    and r1, r3
+                    ldm r0, data.list_last.r0
+                    stm r1, r0
+                    ldm r0, r2
+.list_lastZ:        pop r3
+                    pop r2
+                    pop r1
+                    ret
+data.list_last.r0:  dw 0
+
+;------------------------------------------------------------------------------
 ; handle_bombs()
+;
+; - First, for each bomb with timer-1==0, add bomb to expl_list.
+; - Then, for each bomb in expl_list, call expl_bomb().
+; - In expl_bomb() calls, for any bomb flames reach, insert bomb into expl_list.
 ;------------------------------------------------------------------------------
 handle_bombs:       ldi r0, data.bombs
                     mov r1, r0
                     addi r1, 128
 .handle_bombsL:     subi r1, 8
                     cmp r1, r0
-                    jl .handle_bombsZ
+                    jl .handle_bombsXL
                     mov r3, r1
                     addi r3, 4      ; offsetof(bomb.timer)
                     ldm r4, r3
@@ -85,31 +154,39 @@ handle_bombs:       ldi r0, data.bombs
                     subi r4, 1      ; bomb.timer dec to 0 -> explode
                     stm r4, r3
                     jnz .handle_bombsL
-.handle_bombsX:     addi r3, 2      ; offsetof(bomb.flags) - offsetof(bomb.timer)
-                    ldm r4, r3
-                    andi r4, 3
-                    shl r4, 1
-                    addi r4, data.bombs_plyrs   ; offset to this player's bomb count
-                    ldm r5, r4
-                    addi r5, 1      ; increment it as a bomb of theirs just exploded
-                    stm r5, r4      ; store it
-                    subi r3, 6      ; remove bomb.flags offset -> bomb.x
-                    ldi r4, 0
-                    ldm r5, r3      ; save bomb.x
-                    stm r4, r3      ; and overwrite to 0 since it exploded
-                    addi r3, 2
-                    ldm r6, r3      ; save bomb.y
-                    stm r4, r3      ; and overwrite to 0 since it exploded
                     push r0
+                    ldi r0, data.expl_list
                     push r1
-                    push r2
-                    mov r0, r5
-                    mov r1, r6
-                    call expl_bomb
-                    pop r2
+                    ;subi r1, data.bombs
+                    ;shr r1, 3     ; sizeof(bomb)
+                    call list_insert
                     pop r1
                     pop r0
                     jmp .handle_bombsL
+                    ; iterate expl_list
+.handle_bombsXL:    ldi r0, data.expl_list
+                    call list_last      ; => r0 = &bomb
+                    cmpi r0, 0
+                    jz .handle_bombsZ
+.handle_bombsXLX:   addi r0, 6      ; offsetof(bomb.flags)
+                    ldm r1, r0
+                    andi r1, 3
+                    shl r1, 1
+                    addi r1, data.bombs_plyrs   ; offset to this player's bomb count
+                    ldm r2, r1
+                    addi r2, 1      ; increment it as a bomb of theirs just exploded
+                    stm r2, r1      ; store it
+                    subi r0, 6
+                    push r0
+                    push r1
+                    mov r1, r0
+                    ldm r0, r0          ; bomb.x
+                    addi r1, 2
+                    ldm r1, r1          ; bomb.y
+                    call expl_bomb
+                    pop r1
+                    pop r0
+                    jmp .handle_bombsXL
 .handle_bombsZ:     ret
 
 ;------------------------------------------------------------------------------
@@ -128,12 +205,15 @@ expl_bomb_zero:     andi r2, 0x0f
                     stm r3, r2
                     addi r2, 2
                     ldm r3, r2
-                    shl r3, 1
-                    addi r3, data.bombs_plyrs
-                    ldm r2, r3
-                    addi r2, 1                  ; Inc. that player's bomb count
-                    stm r2, r3
-                    call expl_bomb
+                    ;andi r3, 3
+                    ;addi r3, data.bombs_plyrs
+                    ;ldm r2, r3
+                    ;addi r2, 1                  ; Inc. that player's bomb count
+                    ;stm r2, r3
+                    subi r2, 6
+                    mov r1, r2
+                    ldi r0, data.expl_list
+                    call list_insert
                     ret
 
 ;------------------------------------------------------------------------------
@@ -762,6 +842,11 @@ data.bombs:         dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0,
                     dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0,
                     dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0,
                     dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0,
+
+; word 0: "busy" bitfield
+; words 1..16: list elems
+data.expl_list:     dw 0
+                    dw 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 
 ; Level map format (hex):
 ;   00..79:  flame, value is remaining frame time
