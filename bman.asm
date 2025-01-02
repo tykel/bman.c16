@@ -4,6 +4,18 @@
 ; Copyright 2024 Tim Kelsall.
 ;------------------------------------------------------------------------------
 
+menu:               ;jmp init
+                    pal data.palette
+menu_loop:          call handle_menu
+                    ldm r0, data.start_game
+                    cmpi r0, 1
+                    jz init
+                    cls
+                    bgc 0
+                    call drw_menu
+                    vblnk
+                    jmp menu_loop
+
 init:               ldi r0, 0
                     stm r0, data.ko_plyrs
                     ldi r0, 24
@@ -20,7 +32,7 @@ game_loop:          ldm r0, data.ko_plyrs
                     call handle_bombs
                     call handle_flames
                     cls
-                    bgc 0xb
+                    bgc 8
                     call drw_grid
                     call drw_plyrs
                     call drw_objs
@@ -53,7 +65,17 @@ game_loop:          ldm r0, data.ko_plyrs
                     jmp .game_loopKO
 
 ;------------------------------------------------------------------------------
+; handle_menu()
+;   Handle controller and menu logic.
+;------------------------------------------------------------------------------
+handle_menu:        ldm r0, 0xfff0
+                    shr r0, 5
+                    stm r0, data.start_game
+                    ret
+
+;------------------------------------------------------------------------------
 ; handle_flames()
+;   Check for if cell under player has a flame. Updates ko_plyrs if so.
 ;------------------------------------------------------------------------------
 handle_flames:      ldi r2, data.pos_plyrs
                     ldm r0, r2
@@ -157,8 +179,6 @@ handle_bombs:       ldi r0, data.bombs
                     push r0
                     ldi r0, data.expl_list
                     push r1
-                    ;subi r1, data.bombs
-                    ;shr r1, 3     ; sizeof(bomb)
                     call list_insert
                     pop r1
                     pop r0
@@ -205,11 +225,6 @@ expl_bomb_zero:     andi r2, 0x0f
                     stm r3, r2
                     addi r2, 2
                     ldm r3, r2
-                    ;andi r3, 3
-                    ;addi r3, data.bombs_plyrs
-                    ;ldm r2, r3
-                    ;addi r2, 1                  ; Inc. that player's bomb count
-                    ;stm r2, r3
                     subi r2, 6
                     mov r1, r2
                     ldi r0, data.expl_list
@@ -247,8 +262,6 @@ expl_bomb:          ldm ra, data.pow_plyrs      ; Convert power to tile offs.
 .expl_bombLeftL:    addi rc, 16                 ; ...block or power extent...
                     cmp rc, ra                  ; ...reached.
                     jg .expl_bombRight
-                    ;cmpi rc, 0
-                    ;jl .expl_bombRight
                     push r0
                     push r1
                     sub r0, rc
@@ -268,8 +281,6 @@ expl_bomb:          ldm ra, data.pow_plyrs      ; Convert power to tile offs.
 .expl_bombRightL:   addi rc, 16
                     cmp rc, ra
                     jg .expl_bombUp
-                    ;cmpi rc, 320
-                    ;jge .expl_bombUp
                     push r0
                     push r1
                     add r0, rc
@@ -289,8 +300,6 @@ expl_bomb:          ldm ra, data.pow_plyrs      ; Convert power to tile offs.
 .expl_bombUpL:      addi rc, 16
                     cmp rc, ra
                     jg .expl_bombDown
-                    ;cmpi rc, 0
-                    ;jl .expl_bombDown
                     push r0
                     push r1
                     sub r1, rc
@@ -310,8 +319,6 @@ expl_bomb:          ldm ra, data.pow_plyrs      ; Convert power to tile offs.
 .expl_bombDownL:    addi rc, 16
                     cmp rc, ra
                     jg .expl_bombSnd
-                    ;cmpi rc, 240
-                    ;jge .expl_bombSnd
                     push r0
                     push r1
                     add r1, rc
@@ -716,7 +723,8 @@ drw_plyrs:          ;push r0
 ;------------------------------------------------------------------------------
 ; drw_objs()
 ;------------------------------------------------------------------------------
-drw_objs:           spr 0x0201              ; debug markers for collision detection
+drw_objs:           ret
+                    spr 0x0201              ; debug markers for collision detection
                     ldm r0, debug.x0
                     ldm r1, debug.y0
                     drw r0, r1, debug.spr
@@ -782,6 +790,10 @@ drw_plyr:           shl r0, 2   ; player index to offset in pos_plyrs
 drw_hud:            call drw_debug_hud
                     ret
 
+;------------------------------------------------------------------------------
+; drw_debug_hud()
+;   Draw debug-only information on-screen.
+;------------------------------------------------------------------------------
 drw_debug_hud:      
                     ldm r0, data.pow_plyrs
                     ldi r1, data.str
@@ -800,7 +812,27 @@ drw_debug_hud:
                     ret
 
 ;------------------------------------------------------------------------------
+; drw_menu()
+;   Draw menu screen graphics
+;------------------------------------------------------------------------------
+drw_menu:           ldi r0, data.str_start
+                    ldi r1, 80
+                    ldi r2, 104
+                    call sub_drwstr
+                    ldi r0, data.str_copyr1
+                    ldi r1, 32
+                    ldi r2, 200
+                    call sub_drwstr
+                    ldi r0, data.str_copyr2
+                    ldi r1, 32
+                    ldi r2, 216
+                    call sub_drwstr
+                    ret
+
+;------------------------------------------------------------------------------
 ; BEGIN - Data
+
+data.start_game:    dw 0
 
 data.str:   db "   "
 
@@ -847,6 +879,13 @@ data.bombs:         dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0,
 ; words 1..16: list elems
 data.expl_list:     dw 0
                     dw 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+
+data.str_start:     db "Press START to begin"
+                    db 0
+data.str_copyr1:    db "Programming (C) 2024-5 T. Kelsall"
+                    db 0
+data.str_copyr2:    db "Graphics    (C) 2024-5 C. Kelsall"
+                    db 0
 
 ; Level map format (hex):
 ;   00..79:  flame, value is remaining frame time

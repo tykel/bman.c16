@@ -8,3 +8,4 @@ importbin data/floor.bin 0 128 data.spr_floor
 importbin data/pwrup_flame.bin 0 128 data.spr_pwrup_flame
 importbin data/pwrup_bombs.bin 0 128 data.spr_pwrup_bombs
 importbin data/font.bin 0 3072 data.spr_font
+importbin data/palette.bin 0 48 data.palette
