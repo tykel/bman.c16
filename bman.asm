@@ -4,8 +4,22 @@
 ; Copyright 2024 Tim Kelsall.
 ;------------------------------------------------------------------------------
 
-menu:               ;jmp init
-                    pal data.palette
+ID_FLAME_CENTER         equ 0x00
+ID_FLAME_HORIZ_MID      equ 0x20
+ID_FLAME_HORIZ_LEFT     equ 0x40
+ID_FLAME_HORIZ_RIGHT    equ 0x60
+ID_FLAME_VERT_MID       equ 0x80
+ID_FLAME_VERT_TOP       equ 0xa0
+ID_FLAME_VERT_BOTTOM    equ 0xc0
+ID_TILE                 equ 0xe0
+ID_PWRUP                equ 0xe8
+ID_PWRUP_FLAMES_PLUS    equ 0xe8
+ID_PWRUP_BOMBS_PLUS     equ 0xe9
+ID_BOMB                 equ 0xf0
+
+TIMER_FLAME             equ 0x1f
+
+menu:               jmp init
 menu_loop:          call handle_menu
                     ldm r0, data.start_game
                     cmpi r0, 1
@@ -16,7 +30,8 @@ menu_loop:          call handle_menu
                     vblnk
                     jmp menu_loop
 
-init:               ldi r0, 0
+init:               pal data.palette
+                    ldi r0, 0
                     stm r0, data.ko_plyrs
                     ldi r0, 24
                     ldi r1, data.pos_plyrs
@@ -254,6 +269,7 @@ expl_bomb:          ldm ra, data.pow_plyrs      ; Convert power to tile offs.
 
                     push r0                     ; Start
                     push r1
+                    ldi r2, ID_FLAME_CENTER
                     call map_put_flame          ; Cell where player is located.
                     pop r1                      ; Assume nothing else there,
                     pop r0                      ; since a bomb was placed.
@@ -265,12 +281,13 @@ expl_bomb:          ldm ra, data.pow_plyrs      ; Convert power to tile offs.
                     push r0
                     push r1
                     sub r0, rc
+                    ldi r2, ID_FLAME_HORIZ_MID
                     call map_put_flame
                     pop r1
                     pop r0
-                    cmpi r2, 0x80
+.z:                 cmpi r2, ID_TILE
                     jl .expl_bombLeftL          ; id < 128 => flame
-                    cmpi r2, 0xf0
+                    cmpi r2, ID_BOMB
                     jl .expl_bombRight          ; 128 <= id < 240 => tile
                     pushall                     ; 240 < id => bomb
                     call expl_bomb_zero
@@ -284,12 +301,13 @@ expl_bomb:          ldm ra, data.pow_plyrs      ; Convert power to tile offs.
                     push r0
                     push r1
                     add r0, rc
+                    ldi r2, ID_FLAME_HORIZ_MID
                     call map_put_flame
                     pop r1
                     pop r0
-                    cmpi r2, 0x80
+                    cmpi r2, ID_TILE
                     jl .expl_bombRightL
-                    cmpi r2, 0xf0
+                    cmpi r2, ID_BOMB
                     jl .expl_bombUp
                     pushall
                     call expl_bomb_zero
@@ -303,12 +321,13 @@ expl_bomb:          ldm ra, data.pow_plyrs      ; Convert power to tile offs.
                     push r0
                     push r1
                     sub r1, rc
+                    ldi r2, ID_FLAME_VERT_MID
                     call map_put_flame
                     pop r1
                     pop r0
-                    cmpi r2, 0x80
+                    cmpi r2, ID_TILE
                     jl .expl_bombUpL
-                    cmpi r2, 0xf0
+                    cmpi r2, ID_BOMB
                     jl .expl_bombDown
                     pushall
                     call expl_bomb_zero
@@ -322,12 +341,13 @@ expl_bomb:          ldm ra, data.pow_plyrs      ; Convert power to tile offs.
                     push r0
                     push r1
                     add r1, rc
+                    ldi r2, ID_FLAME_VERT_MID
                     call map_put_flame
                     pop r1
                     pop r0
-                    cmpi r2, 0x80
+                    cmpi r2, ID_TILE
                     jl .expl_bombDownL
-                    cmpi r2, 0xf0
+                    cmpi r2, ID_BOMB
                     jl .expl_bombSnd
                     pushall
                     call expl_bomb_zero
@@ -345,11 +365,14 @@ expl_bomb:          ldm ra, data.pow_plyrs      ; Convert power to tile offs.
 ; IN:
 ;   r0: pos.x
 ;   r1: pos.y
+;   r2: flame id
 ;
 ; OUT:
 ;   r2: the (new) contents of the level map at pos.(x, y)
 ;------------------------------------------------------------------------------
-map_put_flame:      ldi r2, 0x80
+map_put_flame:      push r3
+                    mov r3, r2
+                    ldi r2, ID_TILE
                     cmpi r0, 0
                     jl .map_put_flameZ
                     cmpi r0, 304
@@ -366,12 +389,14 @@ map_put_flame:      ldi r2, 0x80
                     ldm r1, r0
                     mov r2, r1
                     andi r2, 0xff
-                    cmpi r2, 0x80               ; 128 == v: solid tile
-                    jz .map_put_flameZ         ; 128 < v < 255 : destr. tile
+                    cmpi r2, ID_TILE            ; 128 == v: solid tile
+                    jz .map_put_flameZ          ; 128 < v < 255 : destr. tile
                     andi r1, 0xff00
-                    addi r1, 40                 ; add a 40-frame flame
+                    add r1, r3                  ; use correct flame id
+                    addi r1, TIMER_FLAME        ; add a 31-frame flame
 .map_put_flameW:    stm r1, r0
-.map_put_flameZ:    ret
+.map_put_flameZ:    pop r3
+                    ret
 
 ;------------------------------------------------------------------------------
 ; handle_pad()
@@ -546,11 +571,11 @@ move_plyrs:         ldi r2, data.pos_plyrs
                     mov r3, r0
                     pop r1
                     pop r0
-                    cmpi r3, 0xf0
+                    cmpi r3, ID_BOMB
                     jge .move_plyrs11
-                    cmpi r3, 0xc0
+                    cmpi r3, ID_PWRUP
                     jge .move_plyrs1
-                    cmpi r3, 0x80
+                    cmpi r3, ID_TILE
                     jge .move_plyrsZ
 .move_plyrs1:       push r2
                     push r3
@@ -569,9 +594,9 @@ move_plyrs:         ldi r2, data.pos_plyrs
                     mov r0, r3
                     mov r1, r4
                     call map_contents_at
-                    cmpi r0, 0xc0
+                    cmpi r0, ID_PWRUP
                     jge .move_plyrs2
-                    cmpi r0, 0x80
+                    cmpi r0, ID_TILE
                     jge .move_plyrsZ
 .move_plyrs2:       ldi r2, data.pos_plyrs
                     stm r8, r2  ; pos.x = x
@@ -597,13 +622,13 @@ handle_pwrup:       ldm r0, debug.x0
                     ldm r1, r0
                     andi r1, 0xff00
                     stm r1, r0
-                    cmpi r2, 0xc0
+                    cmpi r2, ID_PWRUP_FLAMES_PLUS
                     jnz .handle_pwrupA
                     ldm r0, data.pow_plyrs
                     addi r0, 1
                     stm r0, data.pow_plyrs
                     jmp .handle_pwrupZ
-.handle_pwrupA:     cmpi r2, 0xc1
+.handle_pwrupA:     cmpi r2, ID_PWRUP_BOMBS_PLUS
                     jnz .handle_pwrupZ
                     ldm r0, data.bombs_plyrs
                     addi r0, 1
@@ -673,28 +698,36 @@ drw_grid:           spr 0x1008
                     ldi r6, data.spr_floor
                     andi r5, 0xff
                     jz .drw_gridL0
-.drw_gridNF:        cmpi r5, 0xf0
+.drw_gridNF:        cmpi r5, ID_BOMB
                     jl .drw_gridLB
 .drw_gridBb:        ldi r6, data.spr_bomb
                     jmp .drw_gridL0
-.drw_gridLB:        cmpi r5, 0xc0
+.drw_gridLB:        cmpi r5, ID_PWRUP
                     jl .drw_gridLBlk
                     ldi r6, data.spr_pwrup_flame
-                    andi r5, 0xf
+                    andi r5, 7
                     muli r5, 128
                     add r6, r5
                     jmp .drw_gridL0
 .drw_gridLBlk:      ldi r6, data.spr_blck
                     mov r7, r5              ; tile addr = (i - 128) * 128 + spr.blck
-                    subi r7, 128
+                    andi r7, 7
                     muli r7, 128
                     add r6, r7              ; r6 <= block tile sprite
-                    cmpi r5, 128
+                    cmpi r5, ID_TILE
                     jge .drw_gridL0
+.drw_gridLExp:      push r5
                     subi r5, 1              ; tile is expl. flame...
-                    add r5, r8              ; ... so decrement timer and...
+                    tsti r5, 0x1f
+                    jnz .drw_gridLExp1
+                    ldi r5, 0
+.drw_gridLExp1:     add r5, r8              ; ... so decrement timer and...
                     stm r5, r4              ; ... write back to map.
+                    pop r5
+                    shr r5, 5               ; get flame id
+                    muli r5, 128
                     ldi r6, data.spr_expl   ; r6 <= expl. flame sprite
+                    add r6, r5              ; offset to correct flame segment
 .drw_gridL0:        drw r2, r3, r6
 .drw_gridL1:        subi r1, 1
                     jn .drw_gridZ
@@ -770,7 +803,7 @@ drw_plyr:           shl r0, 2   ; player index to offset in pos_plyrs
                     pop r2
                     cmpi r0, 0
                     jz .drw_plyrT0
-                    subi r4, 128
+                    subi r4, ID_TILE
                     muli r4, 128
                     addi r4, data.spr_blck
                     drw r2, r3, r4
@@ -781,7 +814,7 @@ drw_plyr:           shl r0, 2   ; player index to offset in pos_plyrs
                     call map_contents_at    ; If there is a block here, redraw
                     cmpi r0, 0
                     jz .drw_plyrZ
-                    subi r0, 128
+                    subi r0, ID_TILE
                     muli r0, 128
                     addi r0, data.spr_blck
                     drw r2, r3, r0
@@ -888,40 +921,51 @@ data.str_copyr2:    db "Graphics    (C) 2024-5 C. Kelsall"
                     db 0
 
 ; Level map format (hex):
-;   00..79:  flame, value is remaining frame time
-;   80..bf:  tile
-;   c0..ef:  power-up
-;       c0 = +1 flame length
-;       c1 = +1 bomb drop
-;   f0..ff:  bomb (f0 == bomb, mask 0f for id)
+;
+; flame tile types: center, mid-horiz, mid-vert, left-horiz, right-horiz, top-vert, bottom-vert.
+;
+;   TTT VVVVV
+;   ___ _____
+;   000 ddddd   center-flame, `ddddd` frames remain
+;   001 ddddd   mid-horiz-flame, `ddddd` frames remain
+;   010 ddddd   left-horiz-flame, `ddddd` frames remain
+;   011 ddddd   right-horiz-flame, `ddddd` frames remain
+;   100 ddddd   mid-vert-flame, `ddddd` frames remain
+;   101 ddddd   top-vert-flame, `ddddd` frames remain
+;   110 ddddd   bottom-vert-flame, `ddddd` frames remain
+;   111 00xxx   tile, `xxx` [e0 + 0..7]
+;   111 01xxx   power-up, `xxx` [e8 + 0..7]
+;       00 = +1 flame length
+;       01 = +1 bomb drop
+;   111 1xxxx   bomb, `xxxx` [f0 + 0..15]
 
-data.level:         db 0x80,0x80,0x80,0x80,0x80,0x80,0x80,0x80,0x80,0x80
-                    db 0x80,0x80,0x80,0x80,0x80,0x80,0x80,0x80,0x80,0x80
-                    db 0x80,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00
-                    db 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x80
-                    db 0x80,0x80,0x00,0x80,0x81,0x80,0xc0,0x80,0x00,0x80
-                    db 0x00,0x80,0x00,0x80,0x00,0x80,0xc1,0x80,0x00,0x80
-                    db 0x80,0x81,0x81,0x00,0x81,0x00,0x00,0x00,0x00,0x00
-                    db 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x80
-                    db 0x80,0x00,0x80,0x00,0x80,0x00,0x80,0x00,0x80,0x00
-                    db 0x80,0x00,0x80,0x00,0x80,0x00,0x80,0x00,0x80,0x80
-                    db 0x80,0x00,0x00,0x00,0x00,0x00,0x00,0x81,0x81,0x00
-                    db 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x81,0x80
-                    db 0x80,0x80,0x00,0x80,0x00,0x80,0x00,0x80,0x81,0x80
-                    db 0x00,0x80,0x00,0x80,0x00,0x80,0x00,0x80,0x00,0x80
-                    db 0x80,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00
-                    db 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x80
-                    db 0x80,0x00,0x80,0x00,0x80,0x00,0x80,0x00,0x80,0x00
-                    db 0x80,0x00,0x80,0x00,0x80,0x00,0x80,0x00,0x80,0x80
-                    db 0x80,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00
-                    db 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x80
-                    db 0x80,0x80,0x00,0x80,0x00,0x80,0x00,0x80,0x00,0x80
-                    db 0x00,0x80,0x00,0x80,0x00,0x80,0x00,0x80,0x00,0x80
-                    db 0x80,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00
-                    db 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x80
-                    db 0x80,0x00,0x80,0x00,0x80,0x00,0x80,0x00,0x80,0x00
-                    db 0x80,0x00,0x80,0x00,0x80,0x00,0x80,0x00,0x80,0x80
-                    db 0x80,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00
-                    db 0x00,0x00,0x00,0x00,0x00,0x00,0x81,0x81,0x81,0x80
-                    db 0x80,0x80,0x80,0x80,0x80,0x80,0x80,0x80,0x80,0x80
-                    db 0x80,0x80,0x80,0x80,0x80,0x80,0x80,0x80,0x80,0x80
+data.level:         db 0xe0,0xe0,0xe0,0xe0,0xe0,0xe0,0xe0,0xe0,0xe0,0xe0
+                    db 0xe0,0xe0,0xe0,0xe0,0xe0,0xe0,0xe0,0xe0,0xe0,0xe0
+                    db 0xe0,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00
+                    db 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0xe0
+                    db 0xe0,0xe0,0x00,0xe0,0xe1,0xe0,0xe8,0xe0,0x00,0xe0
+                    db 0x00,0xe0,0x00,0xe0,0x00,0xe0,0xe9,0xe0,0x00,0xe0
+                    db 0xe0,0xe1,0xe1,0x00,0xe1,0x00,0x00,0x00,0x00,0x00
+                    db 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0xe0
+                    db 0xe0,0x00,0xe0,0x00,0xe0,0x00,0xe0,0x00,0xe0,0x00
+                    db 0xe0,0x00,0xe0,0x00,0xe0,0x00,0xe0,0x00,0xe0,0xe0
+                    db 0xe0,0x00,0x00,0x00,0x00,0x00,0x00,0xe1,0xe1,0x00
+                    db 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0xe1,0xe0
+                    db 0xe0,0xe0,0x00,0xe0,0x00,0xe0,0x00,0xe0,0xe1,0xe0
+                    db 0x00,0xe0,0x00,0xe0,0x00,0xe0,0x00,0xe0,0x00,0xe0
+                    db 0xe0,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00
+                    db 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0xe0
+                    db 0xe0,0x00,0xe0,0x00,0xe0,0x00,0xe0,0x00,0xe0,0x00
+                    db 0xe0,0x00,0xe0,0x00,0xe0,0x00,0xe0,0x00,0xe0,0xe0
+                    db 0xe0,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00
+                    db 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0xe0
+                    db 0xe0,0xe0,0x00,0xe0,0x00,0xe0,0x00,0xe0,0x00,0xe0
+                    db 0x00,0xe0,0x00,0xe0,0x00,0xe0,0x00,0xe0,0x00,0xe0
+                    db 0xe0,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00
+                    db 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0xe0
+                    db 0xe0,0x00,0xe0,0x00,0xe0,0x00,0xe0,0x00,0xe0,0x00
+                    db 0xe0,0x00,0xe0,0x00,0xe0,0x00,0xe0,0x00,0xe0,0xe0
+                    db 0xe0,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00
+                    db 0x00,0x00,0x00,0x00,0x00,0x00,0xe1,0xe1,0xe1,0xe0
+                    db 0xe0,0xe0,0xe0,0xe0,0xe0,0xe0,0xe0,0xe0,0xe0,0xe0
+                    db 0xe0,0xe0,0xe0,0xe0,0xe0,0xe0,0xe0,0xe0,0xe0,0xe0
