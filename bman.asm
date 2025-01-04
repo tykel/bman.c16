@@ -391,7 +391,11 @@ map_put_flame:      push r3
                     andi r2, 0xff
                     cmpi r2, ID_TILE            ; 128 == v: solid tile
                     jz .map_put_flameZ          ; 128 < v < 255 : destr. tile
-                    andi r1, 0xff00
+                    cmpi r2, ID_FLAME_HORIZ_MID
+                    jge .map_put_flameD
+                    cmpi r2, 0
+                    jg .map_put_flameZ
+.map_put_flameD:    andi r1, 0xff00
                     add r1, r3                  ; use correct flame id
                     addi r1, TIMER_FLAME        ; add a 31-frame flame
 .map_put_flameW:    stm r1, r0
@@ -688,10 +692,6 @@ drw_grid:           spr 0x1008
                     ldi r2, 304             ; r2 <= tile x in pixels
                     ldi r3, 224             ; r3 <= tile y in pixels
 .drw_gridL:         add r0, r1, r4
-                    cmpi r4, 0x9b9
-                    jnz .drw_gridPPP
-.drw_gridPP:        nop                     ; addr == 0x09ad
-.drw_gridPPP:
                     ldm r5, r4
                     mov r8, r5
                     andi r8, 0xff00
