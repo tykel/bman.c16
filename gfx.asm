@@ -3,7 +3,7 @@ importbin data/shadow.bin 0 128 data.spr_shdw
 importbin data/bomb.bin 0 128 data.spr_bomb
 importbin data/expl.bin 0 896 data.spr_expl
 importbin data/block.bin 0 128 data.spr_blck
-importbin data/crate.bin 0 128 data.spr_crate
+importbin data/crate.bin 0 512 data.spr_crate
 importbin data/floor.bin 0 128 data.spr_floor
 importbin data/pwrup_flame.bin 0 128 data.spr_pwrup_flame
 importbin data/pwrup_bombs.bin 0 128 data.spr_pwrup_bombs

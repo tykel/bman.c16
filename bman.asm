@@ -99,7 +99,7 @@ handle_flames:      ldi r2, data.pos_plyrs
                     call map_contents_at
                     cmpi r0, 0
                     jz .handle_flamesZ
-                    cmpi r0, 128
+                    cmpi r0, ID_TILE
                     jge .handle_flamesZ
                     ldi r0, 1
 .handle_flamesKO:   stm r0, data.ko_plyrs
@@ -285,11 +285,11 @@ expl_bomb:          ldm ra, data.pow_plyrs      ; Convert power to tile offs.
                     call map_put_flame
                     pop r1
                     pop r0
-.z:                 cmpi r2, ID_TILE
-                    jl .expl_bombLeftL          ; id < 128 => flame
+                    cmpi r2, ID_TILE
+                    jl .expl_bombLeftL          ; empty or flame
                     cmpi r2, ID_BOMB
-                    jl .expl_bombRight          ; 128 <= id < 240 => tile
-                    pushall                     ; 240 < id => bomb
+                    jl .expl_bombRight          ; tile
+                    pushall                     ; bomb
                     call expl_bomb_zero
                     popall
                     jmp .expl_bombLeftL
@@ -803,7 +803,10 @@ drw_plyr:           shl r0, 2   ; player index to offset in pos_plyrs
                     pop r2
                     cmpi r0, 0
                     jz .drw_plyrT0
-                    subi r4, ID_TILE
+                    cmpi r0, ID_PWRUP
+                    jl .drw_plyrDBL
+                    addi r4, 128
+.drw_plyrDBL:       subi r4, ID_TILE
                     muli r4, 128
                     addi r4, data.spr_blck
                     drw r2, r3, r4
@@ -814,7 +817,10 @@ drw_plyr:           shl r0, 2   ; player index to offset in pos_plyrs
                     call map_contents_at    ; If there is a block here, redraw
                     cmpi r0, 0
                     jz .drw_plyrZ
-                    subi r0, ID_TILE
+                    cmpi r0, ID_PWRUP
+                    jl .drw_plyrDBR
+.z:                 addi r0, 128
+.drw_plyrDBR:       subi r0, ID_TILE
                     muli r0, 128
                     addi r0, data.spr_blck
                     drw r2, r3, r0
