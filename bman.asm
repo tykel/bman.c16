@@ -701,6 +701,10 @@ drw_grid:           spr 0x1008
 .drw_gridNF:        cmpi r5, ID_BOMB
                     jl .drw_gridLB
 .drw_gridBb:        ldi r6, data.spr_bomb
+                    ldm r7, data.anikey
+                    divi r7, 10
+                    muli r7, 128
+                    add r6, r7
                     jmp .drw_gridL0
 .drw_gridLB:        cmpi r5, ID_PWRUP
                     jl .drw_gridLBlk
