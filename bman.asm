@@ -681,6 +681,31 @@ map_contents_at:    shr r0, 4   ; tile.x = pos.x / 16
                     ret
 
 ;------------------------------------------------------------------------------
+; get_spr_bomb()
+;   Get correct sprite for bomb id.
+;
+; IN:
+;   r0: bomb.id
+;
+; OUT:
+;   r0: sprite addr.
+;------------------------------------------------------------------------------
+get_spr_bomb:       muli r0, 8
+                    addi r0, data.bombs
+                    addi r0, 4
+                    ldm r0, r0
+                    divi r0, 38             ; bomb.timer => [0,1] normal/red
+                    muli r0, 384
+                    push r1
+                    ldm r1, data.anikey
+                    divi r1, 10
+                    muli r1, 128            ; anikey => frame [0..2] for anim.
+                    add r0, r1
+                    pop r1
+                    addi r0, data.spr_bomb
+                    ret
+
+;------------------------------------------------------------------------------
 ; drw_grid()
 ;
 ; Draw level grid on-screen.
@@ -700,11 +725,17 @@ drw_grid:           spr 0x1008
                     jz .drw_gridL0
 .drw_gridNF:        cmpi r5, ID_BOMB
                     jl .drw_gridLB
-.drw_gridBb:        ldi r6, data.spr_bomb
-                    ldm r7, data.anikey
-                    divi r7, 10
-                    muli r7, 128
-                    add r6, r7
+.drw_gridBb:        push r0
+                    mov r0, r5
+                    andi r0, 15
+                    call get_spr_bomb
+                    mov r6, r0
+                    pop r0
+                    ;ldi r6, data.spr_bomb
+                    ;ldm r7, data.anikey
+                    ;divi r7, 10
+                    ;muli r7, 128
+                    ;add r6, r7
                     jmp .drw_gridL0
 .drw_gridLB:        cmpi r5, ID_PWRUP
                     jl .drw_gridLBlk
