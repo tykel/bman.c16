@@ -134,6 +134,73 @@ list_insert:        push r2
                     ret
 
 ;------------------------------------------------------------------------------
+; list_256x8_next()
+;   Return next available list address.
+;
+; IN:
+;   r0: list addr.
+; OUT:
+;   r0: list entry addr.
+;------------------------------------------------------------------------------
+list_256x8_next:    push r2
+                    push r3
+                    push r1
+list_256x8_nextLL:  ldi r1, 0x8000
+                    mov r3, r0
+                    addi r0, 6
+                    addi r3, 2048
+                    ldm r2, r0
+.list_256x8_nextL:  tst r2, r1
+                    jz .list_256x8_nextZ
+                    shr r1, 1
+                    jnz .list_256x8_nextLF
+                    ldi r1, 0x8000
+                    subi r0, 2
+.list_256x8_nextLF: subi r3, 2
+                    jmp .list_256x8_nextL
+.list_256x8_nextZ:  or r2, r1
+                    stm r2, r0
+                    mov r0, r3
+                    pop r1
+                    pop r3
+                    pop r2
+                    ret
+
+;------------------------------------------------------------------------------
+; list_256x8_pop()
+;   Remove item id from list -- mark that location as empty.
+;
+; IN:
+;   r0: list addr.
+;   r1: id
+; OUT:
+;   r0: list entry addr.
+;------------------------------------------------------------------------------
+list_256x8_pop:     push r2
+                    mov r2, r1
+                    push r3
+                    mov r3, r1
+                    divi r2, 16     ; r2 = bitmask byte
+                    shl r2, 2       ; (account for word size)
+                    remi r3, 16     ; r1 = bitmask bit mask
+                    push r1
+                    ldi r1, 1
+                    shl r1, r3
+                    neg r1
+                    add r0, r2
+                    ldm r3, r0
+                    and r3, r1      ; mask out id bit
+                    stm r3, r0      ; and write back to list bitmask
+                    pop r1
+                    sub r0, r2      ; r0 = list addr
+                    addi r0, 32     ; r0 = start of list entries
+                    shl r1, 1
+                    add r0, r1      ; r0 = &list[id]
+                    pop r3
+                    pop r2
+                    ret
+
+;------------------------------------------------------------------------------
 ; list_last()
 ;   Return address of last element in list.
 ;   That list entry will be marked as empty before return. (metadata modified)
@@ -168,6 +235,40 @@ list_last:          push r1
                     pop r2
                     pop r1
                     ret
+;------------------------------------------------------------------------------
+; list_256x8_last()
+;   Same but for 256-entry list of 8B structs.
+;------------------------------------------------------------------------------
+list_256x8_last:    push r1
+                    push r2
+                    push r3
+                    ldm r1, r0
+                    mov r2, r0
+                    addi r0, 6
+                    stm r0, data.list_last.r0
+                    ldi r0, 0
+                    tsti r1, 0xffff
+                    jz .list_256x8_lastZ
+                    ldi r3, 0x8000
+                    addi r2, 32
+.list_256x8_lastL:  tst r1, r3
+                    jnz .list_256x8_lastZF
+                    shr r3, 1
+                    jnz .list_256x8_lastLF
+                    subi r0, 2
+                    ldi r3, 0x8000
+.list_256x8_lastLF: subi r2, 2
+                    jmp .list_256x8_lastL
+.list_256x8_lastZF: not r3
+                    and r1, r3
+                    ldm r0, data.list_last.r0
+                    stm r1, r0
+                    ldm r0, r2
+.list_256x8_lastZ:  pop r3
+                    pop r2
+                    pop r1
+                    ret
+
 data.list_last.r0:  dw 0
 
 ;------------------------------------------------------------------------------
@@ -370,7 +471,10 @@ expl_bomb:          ldm ra, data.pow_plyrs      ; Convert power to tile offs.
 ; OUT:
 ;   r2: the (new) contents of the level map at pos.(x, y)
 ;------------------------------------------------------------------------------
-map_put_flame:      push r3
+map_put_flame:      stm r0, data.map_put_flame.r0
+                    stm r1, data.map_put_flame.r1
+                    stm r2, data.map_put_flame.r2
+                    push r3
                     mov r3, r2
                     ldi r2, ID_TILE
                     cmpi r0, 0
@@ -399,8 +503,30 @@ map_put_flame:      push r3
                     add r1, r3                  ; use correct flame id
                     addi r1, TIMER_FLAME        ; add a 31-frame flame
 .map_put_flameW:    stm r1, r0
+                    ;; Get free slot in flames list, and write:
+                    ;;  flame.x, flame.y, flame.timer, flame.id
+                    jmp .map_put_flameZ
+                    push r0
+                    ldi r0, data.flames_list
+                    call list_256x8_next
+                    mov r3, r0
+                    pop r0
+                    ldm r0, data.map_put_flame.r0
+                    stm r0, r3
+                    addi r3, 2
+                    ldm r0, data.map_put_flame.r1
+                    stm r0, r3
+                    addi r3, 2
+                    ldi r0, TIMER_FLAME
+                    stm r0, r3
+                    addi r3, 2
+                    ldm r0, data.map_put_flame.r2
+                    stm r0, r3
 .map_put_flameZ:    pop r3
                     ret
+data.map_put_flame.r0:  dw 0
+data.map_put_flame.r1:  dw 0
+data.map_put_flame.r2:  dw 0
 
 ;------------------------------------------------------------------------------
 ; handle_pad()
@@ -706,6 +832,33 @@ get_spr_bomb:       muli r0, 8
                     ret
 
 ;------------------------------------------------------------------------------
+; get_spr_flame()
+;   Get correct sprite for flame id.
+;
+; IN:
+;   r0: flame.id
+;
+; OUT:
+;   r0: sprite addr.
+;------------------------------------------------------------------------------
+get_spr_flame:      muli r0, 8
+                    addi r0, data.flames
+                    addi r0, 4
+                    push r1
+                    mov r1, r0
+                    ldm r0, r0
+                    divi r0, 14             ; flame.timer => [0..2] expl.anim
+                    muli r0, 896
+                    addi r1, 2
+                    ldm r1, r1
+                    divi r1, 10
+                    muli r1, 128            ; flame.flags => offset for correct spr
+                    add r0, r1
+                    pop r1
+                    addi r0, data.spr_expl
+                    ret
+
+;------------------------------------------------------------------------------
 ; drw_grid()
 ;
 ; Draw level grid on-screen.
@@ -731,11 +884,6 @@ drw_grid:           spr 0x1008
                     call get_spr_bomb
                     mov r6, r0
                     pop r0
-                    ;ldi r6, data.spr_bomb
-                    ;ldm r7, data.anikey
-                    ;divi r7, 10
-                    ;muli r7, 128
-                    ;add r6, r7
                     jmp .drw_gridL0
 .drw_gridLB:        cmpi r5, ID_PWRUP
                     jl .drw_gridLBlk
@@ -759,10 +907,16 @@ drw_grid:           spr 0x1008
 .drw_gridLExp1:     add r5, r8              ; ... so decrement timer and...
                     stm r5, r4              ; ... write back to map.
                     pop r5
+                    push r5
                     shr r5, 5               ; get flame id
                     muli r5, 128
                     ldi r6, data.spr_expl   ; r6 <= expl. flame sprite
                     add r6, r5              ; offset to correct flame segment
+                    pop r5
+                    andi r5, 0x1f
+                    divi r5, 14
+                    muli r5, 896
+                    add r6, r5              ; r6 <= expl. flame sprite with anim.
 .drw_gridL0:        drw r2, r3, r6
 .drw_gridL1:        subi r1, 1
                     jn .drw_gridZ
@@ -776,16 +930,8 @@ drw_grid:           spr 0x1008
 ;------------------------------------------------------------------------------
 ; drw_plyrs()
 ;------------------------------------------------------------------------------
-drw_plyrs:          ;push r0
-                    ;push r1
-                    ;push r2
-                    ;push r3
-                    ldi r0, 0
+drw_plyrs:          ldi r0, 0
                     call drw_plyr
-                    ;pop r3
-                    ;pop r2
-                    ;pop r1
-                    ;pop r0
                     ret
 
 ;------------------------------------------------------------------------------
@@ -861,15 +1007,18 @@ drw_plyr:           shl r0, 2   ; player index to offset in pos_plyrs
                     drw r2, r3, r0
 .drw_plyrZ:         ret
 
-drw_hud:            call drw_debug_hud
+;------------------------------------------------------------------------------
+; drw_hud()
+;   Draw all interface on-screen.
+;------------------------------------------------------------------------------
+drw_hud:            ;call drw_debug_hud
                     ret
 
 ;------------------------------------------------------------------------------
 ; drw_debug_hud()
 ;   Draw debug-only information on-screen.
 ;------------------------------------------------------------------------------
-drw_debug_hud:      
-                    ldm r0, data.pow_plyrs
+drw_debug_hud:      ldm r0, data.pow_plyrs
                     ldi r1, data.str
                     call sub_r2bcd3
                     ldi r0, data.str
@@ -940,14 +1089,75 @@ data.move_lut:      dw -4,-3,  3,-3,
                     dw -4,-3, -4, 2,
                     dw  3,-3,  3, 2,
 
+; 1 bitfield word + 16 entries [0-f]
 ; Format: x : word, y : word, timer: word, flags: word
 ; flags:
 ;   bits 7..2 = power (# of extra cells in each direction for flame)
 ;   bits 1..0 = player
+data.bombs_list:    dw 0
 data.bombs:         dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0,
                     dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0,
                     dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0,
                     dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0,
+
+; 16 bitfield words + 256 entries [0-ff]
+; Format: x : word, y : word, timer: word, flags: word
+; flags:
+;   bits 2..0 = flame direction/type
+data.flames_list:   dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0,
+data.flames:        dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
+                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
+                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
+                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
+                    
+                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
+                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
+                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
+                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
+                    
+                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
+                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
+                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
+                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
+                    
+                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
+                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
+                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
+                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
+                    
+                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
+                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
+                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
+                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
+                    
+                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
+                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
+                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
+                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
+                    
+                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
+                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
+                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
+                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
+                    
+                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
+                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
+                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
+                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
+                    
+                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
+                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
+                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
+                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
+                    
+                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
+                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
+                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
+                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
+                    
+                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
+                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
+                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 
 
 ; word 0: "busy" bitfield
 ; words 1..16: list elems
@@ -967,6 +1177,7 @@ data.str_copyr2:    db "Graphics    (C) 2024-5 C. Kelsall"
 ;
 ;   TTT VVVVV
 ;   ___ _____
+;   000 00000   <empty>
 ;   000 ddddd   center-flame, `ddddd` frames remain
 ;   001 ddddd   mid-horiz-flame, `ddddd` frames remain
 ;   010 ddddd   left-horiz-flame, `ddddd` frames remain
