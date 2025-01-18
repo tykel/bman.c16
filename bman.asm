@@ -12,6 +12,8 @@ ID_FLAME_VERT_MID       equ 0x80
 ID_FLAME_VERT_TOP       equ 0xa0
 ID_FLAME_VERT_BOTTOM    equ 0xc0
 ID_TILE                 equ 0xe0
+ID_TILE_0               equ 0xe0
+ID_TILE_1               equ 0xe1
 ID_PWRUP                equ 0xe8
 ID_PWRUP_FLAMES_PLUS    equ 0xe8
 ID_PWRUP_BOMBS_PLUS     equ 0xe9
@@ -19,6 +21,9 @@ ID_BOMB                 equ 0xf0
 
 TIMER_FLAME             equ 0x1f
 
+;------------------------------------------------------------------------------
+; @@@ Entry point for the ROM [0x0000]
+;------------------------------------------------------------------------------
 menu:               jmp init
 menu_loop:          call handle_menu
                     ldm r0, data.start_game
@@ -30,7 +35,29 @@ menu_loop:          call handle_menu
                     vblnk
                     jmp menu_loop
 
-init:               pal data.palette
+;------------------------------------------------------------------------------
+clearmem:           ldi r0, 0
+                    stm r0, data.bombs_list
+.clearmem1:         ldi r1, data.flames_list
+                    ldi r2, 32
+                    ldi r3, .clearmem2
+                    jmp .clearmem_zero
+.clearmem2:         ldi r1, data.dtiles_list
+                    ldi r2, 32
+                    ldi r3, .clearmem3
+                    jmp .clearmem_zero
+.clearmem3:         ret
+;--------
+.clearmem_zero:     subi r2, 2
+                    jn .clearmem_zeroZ
+                    add r1, r2, r4
+                    stm r0, r4
+                    jmp .clearmem_zero
+.clearmem_zeroZ:    jmp r3
+
+;------------------------------------------------------------------------------
+init:               call clearmem
+                    pal data.palette
                     ldi r0, 0
                     stm r0, data.ko_plyrs
                     ldi r0, 24
@@ -46,6 +73,7 @@ game_loop:          ldm r0, data.ko_plyrs
                     call move_plyrs
                     call handle_bombs
                     call handle_flames
+                    call handle_dtiles
                     cls
                     bgc 8
                     call drw_grid
@@ -106,6 +134,51 @@ handle_flames:      ldi r2, data.pos_plyrs
 .handle_flamesZ:    ret
 
 ;------------------------------------------------------------------------------
+; handle_dtiles()
+;   Decrement timers for all destr. tiles in list, and remove when reached 0.
+;------------------------------------------------------------------------------
+handle_dtiles:      ldi r0, data.dtiles_list
+                    ldi r1, 0
+.handle_dtilesL:    call list_256x8_iter
+                    cmpi r1, 0
+                    jz .handle_dtilesZ
+.zz:                push r1
+                    addi r1, 4
+                    ldm r2, r1
+                    subi r2, 1
+                    stm r2, r1
+                    pop r1
+                    cmpi r2, 0
+.yy:                jz .handle_dtilesE
+                    tsti r2, 15
+                    jz .handle_dtilesD
+                    jmp .handle_dtilesL
+.handle_dtilesE:    call list_256x8_erase
+                    push r0
+                    ldm r0, r1
+                    divi r0, 16
+                    push r1
+                    addi r1, 2
+                    ldm r1, r1
+                    divi r1, 16
+                    call level_remove
+                    pop r1
+                    pop r0
+                    jmp .handle_dtilesL
+.handle_dtilesD:    push r0
+                    ldm r0, r1
+                    divi r0, 16
+                    push r1
+                    addi r1, 2
+                    ldm r1, r1
+                    divi r1, 16
+                    call level_inctile
+                    pop r1
+                    pop r0
+                    jmp .handle_dtilesL
+.handle_dtilesZ:    ret
+
+;------------------------------------------------------------------------------
 ; list_insert()
 ;   Insert passed value into first empty element of list that is 0.
 ;
@@ -134,8 +207,123 @@ list_insert:        push r2
                     ret
 
 ;------------------------------------------------------------------------------
+; list_XXX()
+; list_256x8_XXX()
+;
+;   Work with array-lists.
+;   Supports insertion, removal, and traversal.
+;
+;   list_insert:    add given item to list
+;   list_next:      reserve and return next available list entry
+;   list_last:      pop last item from list
+;   list_iter:      get next item list, using iterator
+;   list_erase:     set list entry as empty
+;
+;   To iterate a 256x8 list and maybe erase an entry:
+;       ldi r0, my_list
+;       push r1
+;       ldi r1, my_list_array
+;   @:  call list_256x8_iter
+;       ldm r2, r1
+;       cmpi r2, 0
+;       jnz @
+;       call list_256x8_erase
+;       ret
+;       
+;------------------------------------------------------------------------------
+
+;------------------------------------------------------------------------------
+; list_256x8_erase()
+;   Set list entry as empty.
+;
+; IN:
+;   r0: list addr.
+;   r1: list entry addr.
+;------------------------------------------------------------------------------
+list_256x8_erase:   push r1
+                    push r2
+                    push r3
+                    push r4
+                    sub r1, r0
+                    subi r1, 32
+                    divi r1, 8      ; entry id
+                    ldi r2, 16
+                    div r1, r2, r3  ; entry bitmask word
+                    rem r1, r2, r4  ; entry bitmask word bit
+                    ldi r2, 1
+                    shl r2, r4      ; entry bitmask word bitmask
+                    not r2          ; inverted to clear with bitwise AND
+                    muli r3, 2
+                    add r0, r3, r3  ; entyr bitmask word addr
+                    ldm r4, r3
+                    and r4, r2      ; clear bit
+                    stm r4, r3      ; and store
+                    pop r4
+                    pop r3
+                    pop r2
+                    pop r1
+                    ret
+
+;------------------------------------------------------------------------------
+; list_256x8_iter()
+;   Return next non-empty list address, without modifying anything.
+;   Return 0 if list is empty.
+;
+; IN:
+;   r0: list addr.
+;   r1: list entry addr. (use address of list entry 0 on first call)
+; OUT:
+;   r1: list entry addr.
+;------------------------------------------------------------------------------
+list_256x8_iter:    push r0
+                    push r2
+                    push r3
+                    push r4
+                    push r5
+                    cmpi r1, 0
+                    jnz .list_256x8_iterLL
+                    mov r3, r0
+                    addi r3, 2040                       ; r1=0, start from end of list
+                    addi r3, 32                         ; account for bitmask
+                    ldi r4, 0x8000
+                    addi r0, 30
+                    ldm r2, r0
+                    jmp .list_256x8_iterA
+.list_256x8_iterLL: ldm r4, data.list_256x8_iter.mask   ; r1!=0, resume from next pos
+                    ldm r0, data.list_256x8_iter.mask_addr
+                    ldm r2, r0
+                    mov r3, r1
+                    jmp .list_256x8_iterLZ
+.list_256x8_iterA:  cmpi r2, 0
+                    jz .list_256x8_iterZW
+.list_256x8_iterL:  tst r2, r4
+                    jnz .list_256x8_iterF
+.list_256x8_iterLZ: shr r4, 1
+                    jnz .list_256x8_iterLF
+.list_256x8_iterZW: ldi r4, 0x8000
+                    subi r0, 2
+                    cmp r5, r0
+                    jl .list_256x8_iterZE
+.list_256x8_iterLF: subi r3, 2
+                    jmp .list_256x8_iterL
+.list_256x8_iterZE: ldi r1, 0
+                    jmp .list_256x8_iterZ
+.list_256x8_iterF:  mov r1, r3
+.list_256x8_iterZ:  stm r0, data.list_256x8_iter.mask_addr
+                    stm r4, data.list_256x8_iter.mask
+                    pop r5
+                    pop r4
+                    pop r3
+                    pop r2
+                    pop r0
+                    ret
+data.list_256x8_iter.mask: dw 0
+data.list_256x8_iter.mask_addr: dw 0
+
+;------------------------------------------------------------------------------
 ; list_256x8_next()
 ;   Return next available list address.
+;   Will mark the corresponding location as non-empty.
 ;
 ; IN:
 ;   r0: list addr.
@@ -147,8 +335,9 @@ list_256x8_next:    push r2
                     push r1
 list_256x8_nextLL:  ldi r1, 0x8000
                     mov r3, r0
-                    addi r0, 6
-                    addi r3, 2048
+                    addi r0, 30
+                    addi r3, 2040
+                    addi r3, 32
                     ldm r2, r0
 .list_256x8_nextL:  tst r2, r1
                     jz .list_256x8_nextZ
@@ -162,40 +351,6 @@ list_256x8_nextLL:  ldi r1, 0x8000
                     stm r2, r0
                     mov r0, r3
                     pop r1
-                    pop r3
-                    pop r2
-                    ret
-
-;------------------------------------------------------------------------------
-; list_256x8_pop()
-;   Remove item id from list -- mark that location as empty.
-;
-; IN:
-;   r0: list addr.
-;   r1: id
-; OUT:
-;   r0: list entry addr.
-;------------------------------------------------------------------------------
-list_256x8_pop:     push r2
-                    mov r2, r1
-                    push r3
-                    mov r3, r1
-                    divi r2, 16     ; r2 = bitmask byte
-                    shl r2, 2       ; (account for word size)
-                    remi r3, 16     ; r1 = bitmask bit mask
-                    push r1
-                    ldi r1, 1
-                    shl r1, r3
-                    neg r1
-                    add r0, r2
-                    ldm r3, r0
-                    and r3, r1      ; mask out id bit
-                    stm r3, r0      ; and write back to list bitmask
-                    pop r1
-                    sub r0, r2      ; r0 = list addr
-                    addi r0, 32     ; r0 = start of list entries
-                    shl r1, 1
-                    add r0, r1      ; r0 = &list[id]
                     pop r3
                     pop r2
                     ret
@@ -235,6 +390,8 @@ list_last:          push r1
                     pop r2
                     pop r1
                     ret
+data.list_last.r0:  dw 0
+
 ;------------------------------------------------------------------------------
 ; list_256x8_last()
 ;   Same but for 256-entry list of 8B structs.
@@ -244,12 +401,13 @@ list_256x8_last:    push r1
                     push r3
                     ldm r1, r0
                     mov r2, r0
-                    addi r0, 6
-                    stm r0, data.list_last.r0
+                    addi r0, 30
+                    stm r0, data.list_256x8_last.r0
                     ldi r0, 0
                     tsti r1, 0xffff
                     jz .list_256x8_lastZ
                     ldi r3, 0x8000
+                    addi r2, 2040
                     addi r2, 32
 .list_256x8_lastL:  tst r1, r3
                     jnz .list_256x8_lastZF
@@ -261,7 +419,7 @@ list_256x8_last:    push r1
                     jmp .list_256x8_lastL
 .list_256x8_lastZF: not r3
                     and r1, r3
-                    ldm r0, data.list_last.r0
+                    ldm r0, data.list_256x8_last.r0
                     stm r1, r0
                     ldm r0, r2
 .list_256x8_lastZ:  pop r3
@@ -269,7 +427,7 @@ list_256x8_last:    push r1
                     pop r1
                     ret
 
-data.list_last.r0:  dw 0
+data.list_256x8_last.r0:  dw 0
 
 ;------------------------------------------------------------------------------
 ; handle_bombs()
@@ -493,35 +651,34 @@ map_put_flame:      stm r0, data.map_put_flame.r0
                     ldm r1, r0
                     mov r2, r1
                     andi r2, 0xff
-                    cmpi r2, ID_TILE            ; 128 == v: solid tile
-                    jz .map_put_flameZ          ; 128 < v < 255 : destr. tile
-                    cmpi r2, ID_FLAME_HORIZ_MID
+                    cmpi r2, ID_TILE
+                    jz .map_put_flameZ          ; if tile is solid, skip
+                    cmpi r2, ID_TILE_1
+                    jnz .map_put_flameC         ; if tile is destr., replace it
+                    mov r3, r2
+                    addi r3, 1
+                    andi r1, 0xff00
+                    add r1, r3
+                    stm r1, r0
+                    ldi r0, data.dtiles_list
+                    call list_256x8_next        ; get a dtiles list entry to populate
+.z:                 ldm r1, data.map_put_flame.r0
+                    stm r1, r0
+                    addi r0, 2
+                    ldm r1, data.map_put_flame.r1
+                    stm r1, r0
+                    addi r0, 2
+                    ldi r1, 60
+.zzz:               stm r1, r0
+                    jmp .map_put_flameZ
+.map_put_flameC:    cmpi r2, ID_FLAME_HORIZ_MID ; do not replace a center flame
                     jge .map_put_flameD
                     cmpi r2, 0
-                    jg .map_put_flameZ
+                    jg .map_put_flameZ          ; do not replace an existing flame
 .map_put_flameD:    andi r1, 0xff00
                     add r1, r3                  ; use correct flame id
                     addi r1, TIMER_FLAME        ; add a 31-frame flame
 .map_put_flameW:    stm r1, r0
-                    ;; Get free slot in flames list, and write:
-                    ;;  flame.x, flame.y, flame.timer, flame.id
-                    jmp .map_put_flameZ
-                    push r0
-                    ldi r0, data.flames_list
-                    call list_256x8_next
-                    mov r3, r0
-                    pop r0
-                    ldm r0, data.map_put_flame.r0
-                    stm r0, r3
-                    addi r3, 2
-                    ldm r0, data.map_put_flame.r1
-                    stm r0, r3
-                    addi r3, 2
-                    ldi r0, TIMER_FLAME
-                    stm r0, r3
-                    addi r3, 2
-                    ldm r0, data.map_put_flame.r2
-                    stm r0, r3
 .map_put_flameZ:    pop r3
                     ret
 data.map_put_flame.r0:  dw 0
@@ -897,8 +1054,9 @@ drw_grid:           spr 0x1008
                     andi r7, 7
                     muli r7, 128
                     add r6, r7              ; r6 <= block tile sprite
-                    cmpi r5, ID_TILE
+                    cmpi r5, ID_TILE_0
                     jge .drw_gridL0
+                    
 .drw_gridLExp:      push r5
                     subi r5, 1              ; tile is expl. flame...
                     tsti r5, 0x1f
@@ -1000,7 +1158,7 @@ drw_plyr:           shl r0, 2   ; player index to offset in pos_plyrs
                     jz .drw_plyrZ
                     cmpi r0, ID_PWRUP
                     jl .drw_plyrDBR
-.z:                 addi r0, 128
+                    addi r0, 128
 .drw_plyrDBR:       subi r0, ID_TILE
                     muli r0, 128
                     addi r0, data.spr_blck
@@ -1053,6 +1211,46 @@ drw_menu:           ldi r0, data.str_start
                     ret
 
 ;------------------------------------------------------------------------------
+; level_inctile()
+;   Add 1 to level map tile at given coordinates.
+;
+; IN:
+;   r0: x
+;   r1: y
+;------------------------------------------------------------------------------
+level_inctile:      push r0
+                    push r1
+                    muli r1, 20
+                    addi r0, data.level
+                    add r0, r1
+                    ldm r1, r0
+                    addi r1, 1
+                    stm r1, r0
+                    pop r1
+                    pop r0
+                    ret
+
+;------------------------------------------------------------------------------
+; level_remove()
+;   Clear level map at given coordinates.
+;
+; IN:
+;   r0: x
+;   r1: y
+;------------------------------------------------------------------------------
+level_remove:       push r0
+                    push r1
+                    muli r1, 20
+                    addi r0, data.level
+                    add r0, r1
+                    ldm r1, r0
+                    andi r1, 0xff00
+                    stm r1, r0
+                    pop r1
+                    pop r0
+                    ret
+
+;------------------------------------------------------------------------------
 ; BEGIN - Data
 
 data.start_game:    dw 0
@@ -1090,74 +1288,29 @@ data.move_lut:      dw -4,-3,  3,-3,
                     dw  3,-3,  3, 2,
 
 ; 1 bitfield word + 16 entries [0-f]
+; 16x8
 ; Format: x : word, y : word, timer: word, flags: word
 ; flags:
 ;   bits 7..2 = power (# of extra cells in each direction for flame)
 ;   bits 1..0 = player
-data.bombs_list:    dw 0
-data.bombs:         dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0,
-                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0,
-                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0,
-                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0,
+importbin data/zeros_2048.bin 0 2 data.bombs_list
+importbin data/zeros_2048.bin 0 32 data.bombs
 
 ; 16 bitfield words + 256 entries [0-ff]
+; 256x8
 ; Format: x : word, y : word, timer: word, flags: word
 ; flags:
 ;   bits 2..0 = flame direction/type
-data.flames_list:   dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0,
-data.flames:        dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
-                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
-                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
-                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
-                    
-                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
-                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
-                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
-                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
-                    
-                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
-                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
-                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
-                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
-                    
-                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
-                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
-                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
-                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
-                    
-                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
-                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
-                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
-                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
-                    
-                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
-                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
-                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
-                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
-                    
-                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
-                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
-                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
-                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
-                    
-                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
-                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
-                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
-                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
-                    
-                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
-                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
-                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
-                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
-                    
-                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
-                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
-                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
-                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
-                    
-                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
-                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 0,0,0,0, 0,0,0,0,
-                    dw 0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0, 
+importbin data/zeros_2048.bin 0 32 data.flames_list
+importbin data/zeros_2048.bin 0 2048 data.flames
+
+; 16 bitfield words + 256 entries [0-ff]
+; 256x8
+; Format: x : word, y : word, timer: word, flags: word
+; flags:
+;   -
+importbin data/zeros_2048.bin 0 32 data.dtiles_list
+importbin data/zeros_2048.bin 0 2048 data.dtiles
 
 ; word 0: "busy" bitfield
 ; words 1..16: list elems
