@@ -484,26 +484,27 @@ handle_bombs:       ldi r0, data.bombs
 .handle_bombsZ:     ret
 
 ;------------------------------------------------------------------------------
-; expl_bomb_zero()
+; add_expl_bomb()
+;   Add bomb at given location to the "exploding" list.
 ;
 ; IN:
 ;   r0: bomb.x
 ;   r1: bomb.y
 ;   r2: bomb.id
 ;------------------------------------------------------------------------------
-expl_bomb_zero:     andi r2, 0x0f
-                    muli r2, 8
-                    addi r2, data.bombs
-                    addi r2, 4
-                    ldi r3, 0                   ; Set bomb timer to 0
-                    stm r3, r2
-                    addi r2, 2
-                    ldm r3, r2
-                    subi r2, 6
-                    mov r1, r2
-                    ldi r0, data.expl_list
-                    call list_insert
-                    ret
+add_expl_bomb:  andi r2, 0x0f
+                muli r2, 8
+                addi r2, data.bombs
+                addi r2, 4
+                ldi r3, 0                   ; Set bomb timer to 0
+                stm r3, r2
+                addi r2, 2
+                ldm r3, r2
+                subi r2, 6
+                mov r1, r2
+                ldi r0, data.expl_list
+                call list_insert
+                ret
 
 ;------------------------------------------------------------------------------
 ; expl_bomb()
@@ -515,16 +516,13 @@ expl_bomb_zero:     andi r2, 0x0f
 expl_bomb:          ldm ra, data.pow_plyrs      ; Convert power to tile offs.
                     shl ra, 4
 
-                    mov r3, r1                  ; Remove bomb from the level
-                    shr r3, 4
-                    muli r3, 20
-                    mov r2, r0
-                    shr r2, 4
-                    add r2, r3
-                    addi r2, data.level
-                    ldm r3, r2
-                    andi r3, 0xff00             ; by masking out low byte read
-                    stm r3, r2
+                    push r0
+                    shr r0, 4
+                    push r1
+                    shr r1, 4
+                    call level_remove
+                    pop r1
+                    pop r0
 
                     push r0                     ; Start
                     push r1
@@ -549,7 +547,7 @@ expl_bomb:          ldm ra, data.pow_plyrs      ; Convert power to tile offs.
                     cmpi r2, ID_BOMB
                     jl .expl_bombRight          ; tile
                     pushall                     ; bomb
-                    call expl_bomb_zero
+                    call add_expl_bomb
                     popall
                     jmp .expl_bombLeftL
 
@@ -569,7 +567,7 @@ expl_bomb:          ldm ra, data.pow_plyrs      ; Convert power to tile offs.
                     cmpi r2, ID_BOMB
                     jl .expl_bombUp
                     pushall
-                    call expl_bomb_zero
+                    call add_expl_bomb
                     popall
                     jmp .expl_bombRightL
 
@@ -589,7 +587,7 @@ expl_bomb:          ldm ra, data.pow_plyrs      ; Convert power to tile offs.
                     cmpi r2, ID_BOMB
                     jl .expl_bombDown
                     pushall
-                    call expl_bomb_zero
+                    call add_expl_bomb
                     popall
                     jmp .expl_bombUpL
 
@@ -609,7 +607,7 @@ expl_bomb:          ldm ra, data.pow_plyrs      ; Convert power to tile offs.
                     cmpi r2, ID_BOMB
                     jl .expl_bombSnd
                     pushall
-                    call expl_bomb_zero
+                    call add_expl_bomb
                     popall
                     jmp .expl_bombDownL
 
