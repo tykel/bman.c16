@@ -304,7 +304,7 @@ list_256x8_iter:    push r0
                     subi r0, 2
                     cmp r5, r0
                     jl .list_256x8_iterZE
-.list_256x8_iterLF: subi r3, 2
+.list_256x8_iterLF: subi r3, 8
                     jmp .list_256x8_iterL
 .list_256x8_iterZE: ldi r1, 0
                     jmp .list_256x8_iterZ
@@ -345,7 +345,7 @@ list_256x8_nextLL:  ldi r1, 0x8000
                     jnz .list_256x8_nextLF
                     ldi r1, 0x8000
                     subi r0, 2
-.list_256x8_nextLF: subi r3, 2
+.list_256x8_nextLF: subi r3, 8
                     jmp .list_256x8_nextL
 .list_256x8_nextZ:  or r2, r1
                     stm r2, r0
@@ -415,7 +415,7 @@ list_256x8_last:    push r1
                     jnz .list_256x8_lastLF
                     subi r0, 2
                     ldi r3, 0x8000
-.list_256x8_lastLF: subi r2, 2
+.list_256x8_lastLF: subi r2, 8
                     jmp .list_256x8_lastL
 .list_256x8_lastZF: not r3
                     and r1, r3
