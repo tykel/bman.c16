@@ -533,83 +533,139 @@ expl_bomb:          ldm ra, data.pow_plyrs      ; Convert power to tile offs.
 
 .expl_bombLeft:     ldi rc, 0                   ; Scan left, until solid...
 .expl_bombLeftL:    addi rc, 16                 ; ...block or power extent...
+                    ldi r2, ID_FLAME_HORIZ_MID
                     cmp rc, ra                  ; ...reached.
                     jg .expl_bombRight
-                    push r0
+                    jl .expl_bombLeftM
+                    ldi r2, ID_FLAME_HORIZ_LEFT
+.expl_bombLeftM:    push r0
                     push r1
                     sub r0, rc
-                    ldi r2, ID_FLAME_HORIZ_MID
                     call map_put_flame
                     pop r1
                     pop r0
                     cmpi r2, ID_TILE
                     jl .expl_bombLeftL          ; empty or flame
                     cmpi r2, ID_BOMB
-                    jl .expl_bombRight          ; tile
+                    jl .expl_bombLeftE          ; tile
                     pushall                     ; bomb
                     call add_expl_bomb
                     popall
                     jmp .expl_bombLeftL
+.expl_bombLeftE:    cmpi rc, 16
+                    jle .expl_bombRight
+                    cmpi r2, ID_TILE
+                    jnz .expl_bombRight
+                    push r0
+                    push r1
+                    sub r0, rc
+                    addi r0, 16
+                    ldi r2, ID_FLAME_HORIZ_LEFT
+                    call map_put_flame
+                    pop r1
+                    pop r0
 
 .expl_bombRight:    ldi rc, 0                   ; Ditto, right...
 .expl_bombRightL:   addi rc, 16
+                    ldi r2, ID_FLAME_HORIZ_MID
                     cmp rc, ra
                     jg .expl_bombUp
-                    push r0
+                    jl .expl_bombRightM
+                    ldi r2, ID_FLAME_HORIZ_RIGHT
+.expl_bombRightM:   push r0
                     push r1
                     add r0, rc
-                    ldi r2, ID_FLAME_HORIZ_MID
                     call map_put_flame
                     pop r1
                     pop r0
                     cmpi r2, ID_TILE
                     jl .expl_bombRightL
                     cmpi r2, ID_BOMB
-                    jl .expl_bombUp
+                    jl .expl_bombRightE
                     pushall
                     call add_expl_bomb
                     popall
                     jmp .expl_bombRightL
+.expl_bombRightE:   cmpi rc, 16
+                    jle .expl_bombUp
+                    cmpi r2, ID_TILE
+                    jnz .expl_bombUp
+                    push r0
+                    push r1
+                    add r0, rc
+                    subi r0, 16
+                    ldi r2, ID_FLAME_HORIZ_RIGHT
+                    call map_put_flame
+                    pop r1
+                    pop r0
 
 .expl_bombUp:       ldi rc, 0                   ; Ditto, up...
 .expl_bombUpL:      addi rc, 16
+                    ldi r2, ID_FLAME_VERT_MID
                     cmp rc, ra
                     jg .expl_bombDown
-                    push r0
+                    jl .expl_bombUpM
+                    ldi r2, ID_FLAME_VERT_TOP
+.expl_bombUpM:      push r0
                     push r1
                     sub r1, rc
-                    ldi r2, ID_FLAME_VERT_MID
                     call map_put_flame
                     pop r1
                     pop r0
                     cmpi r2, ID_TILE
                     jl .expl_bombUpL
                     cmpi r2, ID_BOMB
-                    jl .expl_bombDown
+                    jl .expl_bombUpE
                     pushall
                     call add_expl_bomb
                     popall
                     jmp .expl_bombUpL
+.expl_bombUpE:      cmpi rc, 16
+                    jle .expl_bombDown
+                    cmpi r2, ID_TILE
+                    jnz .expl_bombDown
+                    push r0
+                    push r1
+                    sub r1, rc
+                    addi r1, 16
+                    ldi r2, ID_FLAME_VERT_TOP
+                    call map_put_flame
+                    pop r1
+                    pop r0
 
 .expl_bombDown:     ldi rc, 0                   ; Ditto, down...
 .expl_bombDownL:    addi rc, 16
+                    ldi r2, ID_FLAME_VERT_MID
                     cmp rc, ra
                     jg .expl_bombSnd
-                    push r0
+                    jl .expl_bombDownM
+                    ldi r2, ID_FLAME_VERT_BOTTOM
+.expl_bombDownM:    push r0
                     push r1
                     add r1, rc
-                    ldi r2, ID_FLAME_VERT_MID
                     call map_put_flame
                     pop r1
                     pop r0
                     cmpi r2, ID_TILE
                     jl .expl_bombDownL
                     cmpi r2, ID_BOMB
-                    jl .expl_bombSnd
+                    jl .expl_bombDownE
                     pushall
                     call add_expl_bomb
                     popall
                     jmp .expl_bombDownL
+.expl_bombDownE:    cmpi rc, 16
+                    jle .expl_bombSnd
+                    cmpi r2, ID_TILE
+                    jnz .expl_bombSnd
+                    push r0
+                    push r1
+                    add r1, rc
+                    subi r1, 16
+                    ldi r2, ID_FLAME_VERT_BOTTOM
+                    call map_put_flame
+                    pop r1
+                    pop r0
 
 .expl_bombSnd:      sng 0x30, 0xf3f3            ; Play the explosion sound.
                     ldi r0, 2000
